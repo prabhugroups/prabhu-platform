@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.deps import require_super_admin, resolve_public_tenant
+from app.core.deps import get_tenant_scope, require_super_admin, resolve_public_tenant
 from app.db.session import get_db
 from app.modules.tenants.models import Tenant, TenantDomain
 from app.modules.tenants.schemas import (
@@ -10,6 +10,7 @@ from app.modules.tenants.schemas import (
     TenantDomainOut,
     TenantOut,
     TenantPublicOut,
+    TenantSelfUpdate,
     TenantUpdate,
 )
 
@@ -42,6 +43,31 @@ def resolve_tenant_by_domain(hostname: str, db: Session = Depends(get_db)) -> Te
 
 @router.get("/public/theme", response_model=TenantPublicOut)
 def public_theme(tenant: Tenant = Depends(resolve_public_tenant)) -> Tenant:
+    return tenant
+
+
+@router.get("/admin/tenant", response_model=TenantPublicOut)
+def admin_get_own_tenant(tenant_id: int = Depends(get_tenant_scope), db: Session = Depends(get_db)) -> Tenant:
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tenant not found")
+    return tenant
+
+
+@router.patch("/admin/tenant", response_model=TenantPublicOut)
+def admin_update_own_tenant(
+    payload: TenantSelfUpdate, tenant_id: int = Depends(get_tenant_scope), db: Session = Depends(get_db)
+) -> Tenant:
+    """A tenant_admin editing their own branding — deliberately a narrower
+    schema than the super_admin's TenantUpdate (see TenantSelfUpdate)."""
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tenant not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(tenant, field, value)
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
     return tenant
 
 

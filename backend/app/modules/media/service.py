@@ -13,7 +13,13 @@ settings = get_settings()
 
 _IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 _DOCUMENT_TYPES = {"application/pdf"}
-_ALLOWED_TYPES = _IMAGE_TYPES | _DOCUMENT_TYPES
+_VIDEO_EXTENSIONS = {
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+}
+_VIDEO_TYPES = set(_VIDEO_EXTENSIONS)
+_ALLOWED_TYPES = _IMAGE_TYPES | _DOCUMENT_TYPES | _VIDEO_TYPES
 
 
 _UPLOAD_READ_CHUNK_BYTES = 64 * 1024
@@ -55,7 +61,12 @@ async def save_upload(*, tenant_slug: str, module: str, file: UploadFile) -> str
     contents = await _read_bounded(file, settings.max_upload_bytes)
 
     directory = _tenant_upload_dir(tenant_slug, module)
-    extension = ".webp" if file.content_type in _IMAGE_TYPES else ".pdf"
+    if file.content_type in _IMAGE_TYPES:
+        extension = ".webp"
+    elif file.content_type in _VIDEO_TYPES:
+        extension = _VIDEO_EXTENSIONS[file.content_type]
+    else:
+        extension = ".pdf"
     filename = f"{uuid.uuid4().hex}{extension}"
     destination = directory / filename
 
@@ -66,6 +77,7 @@ async def save_upload(*, tenant_slug: str, module: str, file: UploadFile) -> str
             image = image.convert("RGBA") if image.mode == "P" else image
             image.save(destination, format="WEBP", quality=85)
     else:
+        # Videos and PDFs are stored as-is — no server-side transcoding.
         destination.write_bytes(contents)
 
     return f"{tenant_slug}/{module}/{filename}"

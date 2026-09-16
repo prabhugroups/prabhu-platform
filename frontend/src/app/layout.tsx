@@ -13,7 +13,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${sansation.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/* suppressHydrationWarning here only covers this element's own
+          attributes (not children) — it's the standard workaround for
+          browser extensions (e.g. ColorZilla) injecting attributes like
+          cz-shortcut-listen onto <body> before React hydrates. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

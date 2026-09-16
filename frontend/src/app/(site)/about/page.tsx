@@ -10,13 +10,13 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 function memberName(m: TeamMember): string {
-  const info = m.additional_info as { name?: string; title?: string } | null;
-  return info?.name ?? "—";
+  const legacy = m.additional_info as { name?: string; title?: string } | null;
+  return m.name ?? legacy?.name ?? "—";
 }
 
 function memberTitle(m: TeamMember): string {
-  const info = m.additional_info as { name?: string; title?: string } | null;
-  return info?.title ?? "";
+  const legacy = m.additional_info as { name?: string; title?: string } | null;
+  return m.role ?? legacy?.title ?? "";
 }
 
 export default async function AboutPage() {

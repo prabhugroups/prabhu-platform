@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getTenant } from "@/lib/get-tenant";
 import { DocumentsList } from "@/components/DocumentsList";
+import { LEGAL_CATEGORIES } from "@/lib/document-categories";
 
 export async function generateMetadata(): Promise<Metadata> {
   const tenant = await getTenant();
@@ -8,5 +9,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function LegalPage() {
-  return <DocumentsList title="Legal & Reports" type="legal" />;
+  return <DocumentsList title="Legal & Reports" categories={LEGAL_CATEGORIES} />;
 }

@@ -1,11 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
 
+const STORAGE_KEY = "popupLastShown";
+const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+
+/** Shows at most once per 15 minutes per browser — ported from
+ * prabhucablecar-web's client-layout.tsx popup logic. */
+function shouldShowPopup(): boolean {
+  try {
+    const lastShown = localStorage.getItem(STORAGE_KEY);
+    if (!lastShown) return true;
+    return Date.now() - parseInt(lastShown, 10) >= FIFTEEN_MINUTES_MS;
+  } catch {
+    return true;
+  }
+}
+
 export function PopupModal({ imageUrl }: { imageUrl: string }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (shouldShowPopup()) {
+      try {
+        localStorage.setItem(STORAGE_KEY, Date.now().toString());
+      } catch {
+        // ignore — private browsing / blocked storage, still show the popup
+      }
+      // localStorage is only readable client-side, so this can't be derived
+      // during the initial render (would mismatch the server-rendered
+      // markup) — it has to happen post-mount, in an effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpen(true);
+    }
+  }, []);
+
   if (!open) return null;
 
   return (

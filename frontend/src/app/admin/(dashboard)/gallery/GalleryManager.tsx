@@ -14,6 +14,7 @@ export function GalleryManager({ galleries }: { galleries: Gallery[] }) {
   const [creating, setCreating] = useState(false);
   const [openGalleryId, setOpenGalleryId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [mediaType, setMediaType] = useState<"Gallery" | "Video">("Gallery");
 
   function handleCreate(formData: FormData) {
     const title = String(formData.get("title") ?? "");
@@ -41,7 +42,7 @@ export function GalleryManager({ galleries }: { galleries: Gallery[] }) {
       const fd = new FormData();
       fd.set("file", file);
       const path = await uploadMedia("gallery", fd);
-      await addGalleryImage(galleryId, path, "Gallery");
+      await addGalleryImage(galleryId, path, mediaType);
       router.refresh();
     } finally {
       setUploading(false);
@@ -67,6 +68,21 @@ export function GalleryManager({ galleries }: { galleries: Gallery[] }) {
         </button>
       </div>
 
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={() => setMediaType("Gallery")}
+          className={mediaType === "Gallery" ? "active-button" : "inactive-button"}
+        >
+          Image
+        </button>
+        <button
+          onClick={() => setMediaType("Video")}
+          className={mediaType === "Video" ? "active-button" : "inactive-button"}
+        >
+          Video
+        </button>
+      </div>
+
       <div className="mt-6 space-y-4">
         {galleries.length === 0 && <p className="text-gray-500">No albums yet.</p>}
         {galleries.map((gallery) => (
@@ -77,7 +93,9 @@ export function GalleryManager({ galleries }: { galleries: Gallery[] }) {
                 className="text-left font-medium"
               >
                 {gallery.title}{" "}
-                <span className="text-sm font-normal text-gray-400">({gallery.images.length} images)</span>
+                <span className="text-sm font-normal text-gray-400">
+                  ({gallery.images.filter((i) => i.type === mediaType).length} {mediaType === "Video" ? "videos" : "images"})
+                </span>
               </button>
               <button
                 onClick={() => handleDeleteGallery(gallery.id)}
@@ -90,28 +108,35 @@ export function GalleryManager({ galleries }: { galleries: Gallery[] }) {
             {openGalleryId === gallery.id && (
               <div className="border-t p-4">
                 <div className="flex flex-wrap gap-3">
-                  {gallery.images.map((image) => {
-                    const src = mediaUrl(image.file);
-                    return (
-                      <div key={image.id} className="group relative h-20 w-20 overflow-hidden rounded">
-                        {src && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={src} alt="" className="h-full w-full object-cover" />
-                        )}
-                        <button
-                          onClick={() => handleDeleteImage(gallery.id, image.id)}
-                          className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    );
-                  })}
+                  {gallery.images
+                    .filter((image) => image.type === mediaType)
+                    .map((image) => {
+                      const src = mediaUrl(image.file);
+                      return (
+                        <div key={image.id} className="group relative h-20 w-20 overflow-hidden rounded">
+                          {src && mediaType === "Video" ? (
+                            <video src={src} className="h-full w-full object-cover" />
+                          ) : (
+                            src && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={src} alt="" className="h-full w-full object-cover" />
+                            )
+                          )}
+                          <button
+                            onClick={() => handleDeleteImage(gallery.id, image.id)}
+                            className="absolute right-1 top-1 rounded-full bg-black/60 p-0.5 text-white opacity-0 group-hover:opacity-100"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded border border-dashed text-gray-400 hover:bg-gray-50">
                     <UploadCloud size={18} />
                     <span className="text-xs">{uploading ? "..." : "Add"}</span>
                     <input
                       type="file"
+                      accept={mediaType === "Video" ? "video/*" : "image/*"}
                       className="hidden"
                       disabled={uploading || pending}
                       onChange={(e) => handleUploadImage(gallery.id, e)}

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { getTenant } from "@/lib/get-tenant";
-import { mediaUrl } from "@/lib/api";
+import { getTenant, getTenantSlug } from "@/lib/get-tenant";
+import { mediaUrl, publicGet } from "@/lib/api";
+import type { TenantContact } from "@/lib/types";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { WhatsAppButton } from "@/components/WhatsAppButton";
 
 export async function generateMetadata(): Promise<Metadata> {
   const tenant = await getTenant();
@@ -25,6 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const tenant = await getTenant();
+  const slug = await getTenantSlug();
+  const contact = await publicGet<TenantContact | null>(slug, "/contact-info");
 
   const themeStyle = `:root {
     --color-primary: ${tenant.primary_color};
@@ -49,6 +53,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <Header tenant={tenant} />
       <main className="flex-1">{children}</main>
       <Footer tenant={tenant} />
+      <WhatsAppButton whatsappNumber={contact?.whatsapp_number ?? null} />
     </>
   );
 }

@@ -8,7 +8,9 @@ import {
   createTenant,
   removeTenantDomain,
   updateTenant,
+  uploadTenantMedia,
 } from "../actions";
+import { mediaUrl } from "@/lib/media-url-client";
 
 interface TenantDomain {
   id: number;
@@ -25,6 +27,11 @@ interface Tenant {
   primary_color: string;
   secondary_color: string;
   primary_light_color: string;
+  font_family: string;
+  footer_text: string | null;
+  logo_file: string | null;
+  favicon_file: string | null;
+  default_og_image_file: string | null;
   domains: TenantDomain[];
 }
 
@@ -153,6 +160,8 @@ export function TenantManager({ tenants }: { tenants: Tenant[] }) {
                     Add Domain
                   </button>
                 </form>
+
+                <BrandingForm tenant={tenant} pending={pending} onSaved={() => router.refresh()} />
               </div>
             )}
           </div>
@@ -192,6 +201,142 @@ export function TenantManager({ tenants }: { tenants: Tenant[] }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function BrandingForm({
+  tenant,
+  pending,
+  onSaved,
+}: {
+  tenant: Tenant;
+  pending: boolean;
+  onSaved: () => void;
+}) {
+  const [, startTransition] = useTransition();
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  function handleSave(formData: FormData) {
+    startTransition(async () => {
+      await updateTenant(tenant.id, {
+        primary_color: String(formData.get("primary_color") ?? tenant.primary_color),
+        secondary_color: String(formData.get("secondary_color") ?? tenant.secondary_color),
+        primary_light_color: String(formData.get("primary_light_color") ?? tenant.primary_light_color),
+        font_family: String(formData.get("font_family") ?? ""),
+        footer_text: String(formData.get("footer_text") ?? ""),
+      });
+      onSaved();
+    });
+  }
+
+  function handleFileUpload(field: "logo_file" | "favicon_file" | "default_og_image_file", file: File) {
+    setUploading(field);
+    startTransition(async () => {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const path = await uploadTenantMedia(tenant.id, formData);
+        await updateTenant(tenant.id, { [field]: path });
+        onSaved();
+      } finally {
+        setUploading(null);
+      }
+    });
+  }
+
+  return (
+    <div className="mt-4 border-t pt-4">
+      <p className="mb-2 text-sm font-medium text-gray-600">Branding</p>
+      <form action={handleSave} className="grid gap-3 sm:grid-cols-2">
+        <label className="flex items-center justify-between gap-2 text-sm">
+          Primary color
+          <input
+            type="color"
+            name="primary_color"
+            defaultValue={tenant.primary_color}
+            className="h-8 w-14 rounded border"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          Secondary color
+          <input
+            type="color"
+            name="secondary_color"
+            defaultValue={tenant.secondary_color}
+            className="h-8 w-14 rounded border"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          Primary light color
+          <input
+            type="color"
+            name="primary_light_color"
+            defaultValue={tenant.primary_light_color}
+            className="h-8 w-14 rounded border"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-sm">
+          Font family
+          <input
+            name="font_family"
+            defaultValue={tenant.font_family}
+            placeholder="Sansation"
+            className="w-40 rounded-md border px-2 py-1 text-sm"
+          />
+        </label>
+        <label className="sm:col-span-2 text-sm">
+          Footer text
+          <textarea
+            name="footer_text"
+            defaultValue={tenant.footer_text ?? ""}
+            rows={2}
+            className="mt-1 w-full rounded-md border px-2 py-1.5 text-sm"
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={pending}
+          className="sm:col-span-2 rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+        >
+          Save Branding
+        </button>
+      </form>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        {(
+          [
+            ["logo_file", "Logo"],
+            ["favicon_file", "Favicon"],
+            ["default_og_image_file", "OG Image"],
+          ] as const
+        ).map(([field, label]) => {
+          const current = tenant[field];
+          const url = mediaUrl(current);
+          return (
+            <div key={field} className="text-sm">
+              <p className="mb-1 text-gray-600">{label}</p>
+              {url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={url} alt={label} className="mb-2 h-12 w-auto rounded border object-contain" />
+              ) : (
+                <p className="mb-2 text-xs text-gray-400">Not set</p>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                disabled={pending || uploading === field}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileUpload(field, file);
+                }}
+                className="text-xs"
+              />
+              {uploading === field && <p className="text-xs text-gray-400">Uploading...</p>}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

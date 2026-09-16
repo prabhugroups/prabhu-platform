@@ -3,10 +3,10 @@ import { getTenantSlug } from "@/lib/get-tenant";
 import type { DocumentItem } from "@/lib/types";
 import { FileText } from "lucide-react";
 
-export async function DocumentsList({ title, type }: { title: string; type: string }) {
+export async function DocumentsList({ title, categories }: { title: string; categories: string[] }) {
   const slug = await getTenantSlug();
   const documents = await publicGet<DocumentItem[]>(slug, "/documents");
-  const filtered = documents.filter((d) => d.type === type);
+  const filtered = documents.filter((d) => categories.includes(d.type));
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-16">

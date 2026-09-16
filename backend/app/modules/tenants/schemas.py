@@ -52,6 +52,20 @@ class TenantCreate(BaseModel):
     domains: list[TenantDomainCreate] = []
 
 
+class TenantSelfUpdate(BaseModel):
+    """What a tenant_admin may edit about their own tenant — branding only,
+    never `is_active`/`shareholder_module_enabled` (super_admin-only)."""
+
+    primary_color: Optional[str] = None
+    secondary_color: Optional[str] = None
+    primary_light_color: Optional[str] = None
+    font_family: Optional[str] = None
+    footer_text: Optional[str] = None
+    logo_file: Optional[str] = None
+    favicon_file: Optional[str] = None
+    default_og_image_file: Optional[str] = None
+
+
 class TenantUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
@@ -61,3 +75,6 @@ class TenantUpdate(BaseModel):
     primary_light_color: Optional[str] = None
     font_family: Optional[str] = None
     footer_text: Optional[str] = None
+    logo_file: Optional[str] = None
+    favicon_file: Optional[str] = None
+    default_og_image_file: Optional[str] = None

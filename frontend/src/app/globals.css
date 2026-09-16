@@ -9,6 +9,12 @@
   --color-primary: #0059ab;
   --color-secondary: #17ad4c;
   --color-primary-light: #4a90e2;
+  /* Static tokens ported from prabhucablecar-web's globals.css — not
+     per-tenant, just the shared pale section backgrounds/text color the
+     legacy design uses throughout. */
+  --color-light-green: #f3fff8;
+  --color-light-blue: #f0f8ff;
+  --color-color-primary: #202b5d;
 }
 
 @theme inline {
@@ -17,6 +23,9 @@
   --color-primary: var(--color-primary);
   --color-secondary: var(--color-secondary);
   --color-primary-light: var(--color-primary-light);
+  --color-light-green: var(--color-light-green);
+  --color-light-blue: var(--color-light-blue);
+  --color-color-primary: var(--color-color-primary);
   --font-sans: var(--tenant-font, "Sansation", ui-sans-serif, system-ui, sans-serif);
 }
 
@@ -24,4 +33,65 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+@layer base {
+  h1 {
+    @apply text-lg font-bold text-primary md:text-xl lg:text-2xl;
+  }
+
+  h2 {
+    @apply text-base font-semibold text-secondary lg:text-lg;
+  }
+
+  h3 {
+    @apply text-base font-normal text-primary md:text-lg;
+  }
+
+  h4 {
+    @apply text-base font-normal text-secondary md:text-lg;
+  }
+
+  p {
+    @apply text-justify text-base text-color-primary;
+  }
+}
+
+@layer utilities {
+  .custom-container {
+    @apply mx-auto max-w-[95%];
+  }
+
+  .flex-center {
+    @apply flex items-center justify-center;
+  }
+
+  .button {
+    @apply cursor-pointer rounded-sm bg-primary py-2 px-4 text-sm font-normal text-white md:text-base md:font-bold;
+  }
+
+  .active-button {
+    @apply cursor-pointer whitespace-nowrap rounded-xl border-2 border-primary bg-primary/10 px-2 py-1 text-sm text-primary;
+  }
+
+  .inactive-button {
+    @apply cursor-pointer whitespace-nowrap rounded-xl border-2 border-gray-300 bg-black/5 px-2 py-1 text-sm text-gray-700;
+  }
+
+  .highlighted-content ul {
+    @apply list-disc space-y-2 pl-5 marker:text-secondary;
+  }
+
+  .bullet-point-content ul {
+    @apply list-disc space-y-2 rounded-lg bg-light-blue px-8 py-2 pl-8 marker:text-primary;
+  }
+
+  .hide-scrollbar {
+    @apply overflow-auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
 }

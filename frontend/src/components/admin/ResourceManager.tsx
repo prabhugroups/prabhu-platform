@@ -6,6 +6,10 @@ import { Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
 import { createResource, deleteResource, updateResource, uploadMedia } from "@/lib/admin/generic-actions";
 import type { FieldConfig, ResourceRow } from "@/lib/admin/field-types";
 import { mediaUrl } from "@/lib/media-url-client";
+import { RichTextEditor } from "@/components/fields/RichTextEditor";
+import { NepaliDateInput } from "@/components/fields/NepaliDateInput";
+import { UrlInput } from "@/components/fields/UrlInput";
+import { Toggle } from "@/components/ui/Toggle";
 
 interface Props {
   title: string;
@@ -28,7 +32,7 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
   function handleSubmit(formData: FormData) {
     const data: Record<string, unknown> = {};
     for (const field of fields) {
-      if (field.type === "checkbox") {
+      if (field.type === "checkbox" || field.type === "toggle") {
         data[field.name] = formData.get(field.name) === "on";
       } else if (field.type === "number") {
         const v = formData.get(field.name);
@@ -112,7 +116,7 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
               <tr key={item.id}>
                 {fields.map((f) => (
                   <td key={f.name} className="max-w-xs truncate px-4 py-3">
-                    {formatCell(item[f.name], f.type)}
+                    {formatCell(item[f.name], f)}
                   </td>
                 ))}
                 <td className="px-4 py-3 text-right">
@@ -158,6 +162,12 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
                       />
                       {f.label}
                     </label>
+                  ) : f.type === "toggle" ? (
+                    <Toggle
+                      name={f.name}
+                      label={f.label}
+                      initialChecked={editing !== "new" ? Boolean(editing[f.name]) : false}
+                    />
                   ) : f.type === "media" ? (
                     <>
                       <label className="mb-1 block text-sm font-medium">{f.label}</label>
@@ -167,6 +177,24 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
                         initialPath={editing !== "new" ? (editing[f.name] as string | null) : null}
                       />
                     </>
+                  ) : f.type === "richtext" ? (
+                    <RichTextEditor
+                      name={f.name}
+                      label={f.label}
+                      initialValue={editing !== "new" ? (editing[f.name] as string | null) : null}
+                    />
+                  ) : f.type === "nepali-date" ? (
+                    <NepaliDateInput
+                      name={f.name}
+                      label={f.label}
+                      initialValue={editing !== "new" ? (editing[f.name] as string | null) : null}
+                    />
+                  ) : f.type === "url" ? (
+                    <UrlInput
+                      name={f.name}
+                      label={f.label}
+                      initialValue={editing !== "new" ? (editing[f.name] as string | null) : null}
+                    />
                   ) : (
                     <>
                       <label className="mb-1 block text-sm font-medium">{f.label}</label>
@@ -179,7 +207,7 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
                         >
                           {f.options?.map((opt) => (
                             <option key={opt} value={opt}>
-                              {opt}
+                              {f.optionLabels?.[opt] ?? opt}
                             </option>
                           ))}
                         </select>
@@ -228,15 +256,18 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
   );
 }
 
-function formatCell(value: unknown, type: FieldConfig["type"]): string {
+function formatCell(value: unknown, field: FieldConfig): string {
   if (value === null || value === undefined) return "—";
-  if (type === "checkbox") return value ? "Yes" : "No";
+  const { type } = field;
+  if (type === "checkbox" || type === "toggle") return value ? "Yes" : "No";
   if (type === "media") return String(value).split("/").pop() ?? String(value);
   if (type === "json") return JSON.stringify(value);
+  if (type === "richtext") return String(value).replace(/<[^>]+>/g, " ").trim();
+  if (type === "select") return field.optionLabels?.[String(value)] ?? String(value);
   return String(value);
 }
 
-function MediaField({
+export function MediaField({
   name,
   module,
   initialPath,
