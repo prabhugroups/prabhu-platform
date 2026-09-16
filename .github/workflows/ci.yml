@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: prabhu_platform_test
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Create app + test databases
+        run: |
+          mysql -h127.0.0.1 -uroot -e "CREATE DATABASE IF NOT EXISTS prabhu_platform;"
+          mysql -h127.0.0.1 -uroot -e "CREATE USER IF NOT EXISTS 'prabhu_platform'@'%' IDENTIFIED BY 'ci-password';"
+          mysql -h127.0.0.1 -uroot -e "GRANT ALL PRIVILEGES ON prabhu_platform.* TO 'prabhu_platform'@'%';"
+          mysql -h127.0.0.1 -uroot -e "GRANT ALL PRIVILEGES ON prabhu_platform_test.* TO 'prabhu_platform'@'%';"
+      - name: Alembic migrate
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: prabhu_platform
+          DB_PASSWORD: ci-password
+          JWT_SECRET: ci-only-secret
+        run: alembic upgrade head
+      - name: pytest
+        env:
+          DB_HOST: 127.0.0.1
+          DB_USER: prabhu_platform
+          DB_PASSWORD: ci-password
+          JWT_SECRET: ci-only-secret
+        run: pytest -q
+      - name: bandit
+        run: bandit -r app
+      - name: pip-audit
+        run: pip-audit -r requirements.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm audit --audit-level=high
+      - name: build
+        env:
+          INTERNAL_API_URL: http://127.0.0.1:8000
+        run: npm run build
+
+  build-images:
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: false
+          tags: prabhu-platform-backend:${{ github.sha }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: false
+          tags: prabhu-platform-frontend:${{ github.sha }}
+
+  deploy:
+    needs: [build-images]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production # requires manual approval — configure this environment's protection rules in repo settings
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/prabhu-platform
+            git pull
+            cd infra
+            docker compose up -d --build
