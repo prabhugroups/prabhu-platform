@@ -15,9 +15,16 @@ const internalApiUrl = process.env.INTERNAL_API_URL ?? "http://127.0.0.1:8010";
 // (no external script/frame/object origins, no framing, no cross-origin
 // form submission) still holds. Revisit if those two inline blocks are ever
 // replaced with an external-stylesheet / nonce-based approach.
+// Dev-only: Next's dev server (Fast Refresh, cross-environment stack-trace
+// reconstruction) needs eval(). Production builds never hit this branch.
+const scriptSrc =
+  process.env.NODE_ENV === "production"
+    ? "script-src 'self' 'unsafe-inline';"
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval';";
+
 const cspHeader = `
   default-src 'self';
-  script-src 'self' 'unsafe-inline';
+  ${scriptSrc}
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob:;
   font-src 'self';
