@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node / Next.js
+node_modules/
+.next/
+next-env.d.ts
+
+# Env files with real secrets
+.env
+.env.local
+!.env.example
+!.env.local.example
+infra/.env
+
+# Uploads / runtime data
+backend/uploads/
+uploads/
+infra/traefik-logs/
+
+# Migration inputs (may contain production data/credentials)
+migration/legacy_dumps/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/

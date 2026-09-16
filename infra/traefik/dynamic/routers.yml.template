@@ -1,0 +1,137 @@
+# Dynamic Traefik config — one router per known tenant hostname, all
+# pointing at the single `frontend` service, plus one path-scoped router for
+# /media/* that goes straight to `backend`. This mirrors app/db/seed.py's
+# TENANTS table; add a hostname here AND as a tenant_domains row (via the
+# Super Admin console or seed.py) when onboarding a new tenant or domain —
+# the two must stay in sync for a domain to actually resolve.
+#
+# FastAPI is otherwise never exposed publicly — only Next.js and this one
+# /media path reach the outside world (see backend app/main.py's comment on
+# why there's no CORS middleware).
+#
+# Every public router chains the `security-headers` + `rate-limit` +
+# `in-flight` + `buffering` middlewares below (see docs/TRAEFIK.md's "Rate
+# limiting & headers" section for what each one does and how to tune it).
+# This is edge-layer, application-layer-DDoS + OWASP-header hardening — it
+# complements, not replaces, an upstream network-layer proxy (docs/SECURITY.md)
+# for real volumetric attacks, and the backend's own per-route login
+# throttle (backend/app/core/rate_limit.py) for credential-stuffing.
+
+http:
+  middlewares:
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customFrameOptionsValue: "DENY"
+        customResponseHeaders:
+          Permissions-Policy: "geolocation=(), camera=(), microphone=(), payment=()"
+        # CSP is set by Next.js itself (frontend/next.config.ts), not here —
+        # it needs to know the app's actual script/style/font sources, which
+        # Traefik has no visibility into.
+
+    rate-limit:
+      rateLimit:
+        average: 50 # sustained requests/sec per source IP
+        burst: 100 # short bursts above the average before throttling kicks in
+
+    # Tighter edge budget for the Super Admin console — it's a pure login +
+    # CMS-admin surface, not public traffic, so there's no reason to allow
+    # the same burst as the tenant sites. The per-account login lockout
+    # itself lives in the backend (app/core/rate_limit.py), not here.
+    super-admin-rate-limit:
+      rateLimit:
+        average: 10
+        burst: 20
+
+    in-flight:
+      inFlightReq:
+        amount: 20 # concurrent open requests per source IP — slowloris-style mitigation
+
+    buffering:
+      buffering:
+        maxRequestBodyBytes: 27262976 # 26MB — just above the app's 25MB max_upload_bytes
+        memRequestBodyBytes: 2097152 # 2MB buffered in memory before spilling to disk
+
+  routers:
+    hydro-holdings:
+      rule: "Host(`holdingshydro.com`) || Host(`www.holdingshydro.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    ichchhakamana:
+      rule: "Host(`ichchhakamanacablecar.com`) || Host(`www.ichchhakamanacablecar.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    nepal-land-broker:
+      rule: "Host(`nepallandbroker.com`) || Host(`www.nepallandbroker.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    prabhucablecar:
+      rule: "Host(`prabhucablecar.com`) || Host(`www.prabhucablecar.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    prabhu-holdings:
+      rule: "Host(`holdingsprabhu.com`) || Host(`www.holdingsprabhu.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    prabhusteels:
+      rule: "Host(`prabhusteel.com`) || Host(`www.prabhusteel.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    ranimahal:
+      rule: "Host(`ranimahalcablecar.com`) || Host(`www.ranimahalcablecar.com`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    # Operator-only console — point a real DNS record at this host before
+    # go-live (see docs/RUNBOOK.md). Deliberately not one of the 7 tenant
+    # domains above. Tighter rate limit: this is an admin login surface, not
+    # public CMS traffic.
+    super-admin:
+      rule: "Host(`${SUPER_ADMIN_DOMAIN}`)"
+      entryPoints: [websecure]
+      service: frontend
+      middlewares: [security-headers, super-admin-rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+
+    media:
+      rule: "PathPrefix(`/media`)"
+      entryPoints: [websecure]
+      service: backend
+      middlewares: [security-headers, rate-limit, in-flight, buffering]
+      tls: { certResolver: letsencrypt }
+      priority: 100
+
+  services:
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+    backend:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8000"

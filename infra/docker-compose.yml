@@ -1,0 +1,82 @@
+# Modular-monolith topology: one Traefik, one Next.js, one FastAPI, one
+# MySQL. No per-tenant containers, no Redis, no queue — 7 tenants of simple
+# CMS content don't need them (see docs/ARCHITECTURE.md for the reasoning).
+#
+# Usage: cd infra && cp .env.example .env  (fill in real secrets) && \
+#        docker compose up -d --build
+
+services:
+  traefik:
+    image: traefik:v3.2
+    restart: unless-stopped
+    entrypoint: ["/entrypoint.sh"]
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+    environment:
+      SUPER_ADMIN_DOMAIN: "${SUPER_ADMIN_DOMAIN}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik/entrypoint.sh:/entrypoint.sh:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik_acme:/letsencrypt
+      # Bind mount (not a named volume) so fail2ban, running directly on the
+      # host, can read the access log at a real filesystem path — see
+      # docs/SECURITY.md.
+      - ./traefik-logs:/var/log/traefik
+    depends_on:
+      - frontend
+      - backend
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      UPLOADS_DIR: /app/uploads
+      SEED_SUPER_ADMIN_USERNAME: ${SEED_SUPER_ADMIN_USERNAME}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD}
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build: ../frontend
+    restart: unless-stopped
+    environment:
+      INTERNAL_API_URL: http://backend:8000
+      NODE_ENV: production
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  uploads_data:
+  traefik_acme:

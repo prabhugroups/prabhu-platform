@@ -1,0 +1,76 @@
+# Static Traefik config. No Docker-socket provider is used on purpose — all
+# routing is declared explicitly in dynamic/routers.yml, so Traefik never
+# needs docker.sock mounted (smaller attack surface than label-based
+# discovery for a fixed, small set of 7 tenant domains + 1 admin domain).
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+    forwardedHeaders:
+      trustedIPs: &cloudflare_ips
+        # Cloudflare's published proxy IP ranges (https://www.cloudflare.com/ips/).
+        # Only relevant once DNS is switched to Cloudflare's proxied (orange-cloud)
+        # mode per docs/SECURITY.md — until then this list is harmless (Traefik
+        # only trusts X-Forwarded-For from these IPs; anyone else's is ignored,
+        # so real client IPs still resolve correctly from a direct connection).
+        # Keep this list in sync with Cloudflare's page if it changes.
+        - 173.245.48.0/20
+        - 103.21.244.0/22
+        - 103.22.200.0/22
+        - 103.31.4.0/22
+        - 141.101.64.0/18
+        - 108.162.192.0/18
+        - 190.93.240.0/20
+        - 188.114.96.0/20
+        - 197.234.240.0/22
+        - 198.41.128.0/17
+        - 162.158.0.0/15
+        - 104.16.0.0/13
+        - 104.24.0.0/14
+        - 172.64.0.0/13
+        - 131.0.72.0/22
+        - 2400:cb00::/32
+        - 2606:4700::/32
+        - 2803:f800::/32
+        - 2405:b500::/32
+        - 2405:8100::/32
+        - 2a06:98c0::/29
+        - 2c0f:f248::/32
+  websecure:
+    address: ":443"
+    forwardedHeaders:
+      trustedIPs: *cloudflare_ips
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      # email is set via the --certificatesresolvers.letsencrypt.acme.email
+      # command-line flag in docker-compose.yml (compose substitutes
+      # ${ACME_EMAIL} there; Traefik's own YAML config files are not
+      # env-var-interpolated).
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: INFO
+
+# JSON access log so fail2ban (docs/SECURITY.md) can pattern-match repeated
+# 401/429 responses per source IP and ban at the host firewall. Not enabled
+# by default in Traefik.
+accessLog:
+  format: json
+  filePath: /var/log/traefik/access.log
