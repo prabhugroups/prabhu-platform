@@ -8,7 +8,7 @@ pydantic[email]>=2.10
 pydantic-settings>=2.7
 PyJWT>=2.10
 bcrypt>=4.1
-python-multipart>=0.0.20
+python-multipart>=0.0.32
 Pillow>=11.1
 pillow-heif>=0.21
 
