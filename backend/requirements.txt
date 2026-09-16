@@ -1,0 +1,20 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+sqlalchemy>=2.0.36
+alembic>=1.14
+pymysql>=1.1
+cryptography>=44
+pydantic[email]>=2.10
+pydantic-settings>=2.7
+PyJWT>=2.10
+bcrypt>=4.1
+python-multipart>=0.0.20
+Pillow>=11.1
+pillow-heif>=0.21
+
+# dev / test
+pytest>=8.3
+pytest-asyncio>=0.25
+httpx>=0.28
+pip-audit>=2.7
+bandit>=1.8
