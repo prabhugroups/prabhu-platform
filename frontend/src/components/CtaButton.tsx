@@ -2,8 +2,10 @@ import { ArrowUpRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** Pill CTA with a white circular arrow icon that rotates on hover — ported
- * from prabhucablecar-web's ui/Button.tsx. */
-export function Button({
+ * from prabhucablecar-web's ui/Button.tsx. Public marketing site only (not
+ * the admin CMS) — lives outside components/ui/ to avoid a case-only
+ * filename collision with shadcn's own components/ui/button.tsx. */
+export function CtaButton({
   children,
   type = "button",
   onClick,

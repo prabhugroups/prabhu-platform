@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Bold, Code, Heading1, Italic, List, ListOrdered, Pilcrow, Quote } from "lucide-react";
+import { Label } from "@/components/ui/label";
 
 /** TipTap rich-text field for the admin's plain `<form action={...}>` +
  * FormData pattern (see ResourceManager.tsx's MediaField for the same
@@ -65,7 +66,7 @@ export function RichTextEditor({
 
   return (
     <div>
-      {label && <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>}
+      {label && <Label className="mb-1.5">{label}</Label>}
       <input type="hidden" name={name} value={html} readOnly />
       <div className="mb-2 flex flex-wrap gap-1 rounded-md border border-slate-200 bg-slate-100 p-2">
         {toolbarButton(editor.isActive("bold"), () => editor.chain().focus().toggleBold().run(), "Bold", (

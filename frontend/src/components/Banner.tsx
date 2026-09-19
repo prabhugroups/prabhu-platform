@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Button } from "@/components/ui/Button";
+import { CtaButton } from "@/components/CtaButton";
 
 export interface BannerSlide {
   title: string;
@@ -69,7 +69,7 @@ export function Banner({ slides }: { slides: BannerSlide[] }) {
             </span>
             {current.link && (
               <Link href={current.link}>
-                <Button>Learn More</Button>
+                <CtaButton>Learn More</CtaButton>
               </Link>
             )}
           </div>
@@ -82,7 +82,7 @@ export function Banner({ slides }: { slides: BannerSlide[] }) {
           </span>
           {current.link && (
             <Link href={current.link}>
-              <Button>Learn More</Button>
+              <CtaButton>Learn More</CtaButton>
             </Link>
           )}
         </div>

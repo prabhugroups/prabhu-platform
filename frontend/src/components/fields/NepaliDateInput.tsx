@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import NepaliDate from "nepali-datetime";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 const NEPALI_MONTHS = [
   "Baishakh",
@@ -112,7 +114,7 @@ export function NepaliDateInput({
 
   return (
     <div>
-      {label && <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>}
+      {label && <Label className="mb-1.5">{label}</Label>}
       <div className="relative">
         <input
           type="text"
@@ -121,9 +123,10 @@ export function NepaliDateInput({
           onChange={(e) => setValue(e.target.value)}
           onBlur={handleBlur}
           placeholder="YYYY-MM-DD (e.g., 2081-03-15)"
-          className={`w-full rounded-md border px-4 py-2 pr-12 focus:outline-none focus:ring-1 ${
-            error ? "border-red-500 focus:ring-red-500" : "border-gray-300"
-          }`}
+          className={cn(
+            "border-input flex h-8 w-full min-w-0 rounded-lg border bg-transparent px-3 py-2 pr-12 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+            error && "border-destructive focus-visible:ring-destructive/20",
+          )}
         />
         <button
           type="button"

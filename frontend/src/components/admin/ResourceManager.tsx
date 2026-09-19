@@ -2,14 +2,34 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { createResource, deleteResource, updateResource, uploadMedia } from "@/lib/admin/generic-actions";
 import type { FieldConfig, ResourceRow } from "@/lib/admin/field-types";
 import { mediaUrl } from "@/lib/media-url-client";
 import { RichTextEditor } from "@/components/fields/RichTextEditor";
 import { NepaliDateInput } from "@/components/fields/NepaliDateInput";
 import { UrlInput } from "@/components/fields/UrlInput";
-import { Toggle } from "@/components/ui/Toggle";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 interface Props {
   title: string;
@@ -21,6 +41,7 @@ interface Props {
 export function ResourceManager({ title, basePath, fields, items }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState<ResourceRow | "new" | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ResourceRow | null>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -55,11 +76,13 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
 
     startTransition(async () => {
       try {
-        if (editing === "new") {
+        const wasNew = editing === "new";
+        if (wasNew) {
           await createResource(basePath, currentPath(), data);
         } else if (editing) {
           await updateResource(basePath, editing.id, currentPath(), data);
         }
+        toast.success(wasNew ? `${title} created.` : `${title} updated.`);
         close();
         router.refresh();
       } catch {
@@ -68,10 +91,13 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
     });
   }
 
-  function handleDelete(id: number) {
-    if (!confirm("Delete this item? This cannot be undone.")) return;
+  function handleDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
     startTransition(async () => {
       await deleteResource(basePath, id, currentPath());
+      toast.success(`${title} deleted.`);
+      setDeleteTarget(null);
       router.refresh();
     });
   }
@@ -84,93 +110,79 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{title}</h1>
-        <button
-          onClick={() => setEditing("new")}
-          className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          <Plus size={16} /> Add
-        </button>
+        <Button onClick={() => setEditing("new")}>
+          <Plus /> Add
+        </Button>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-lg border bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500">
-            <tr>
+      <div className="mt-6 overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
               {fields.map((f) => (
-                <th key={f.name} className="px-4 py-3 font-medium">
-                  {f.label}
-                </th>
+                <TableHead key={f.name}>{f.label}</TableHead>
               ))}
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y">
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {items.length === 0 && (
-              <tr>
-                <td colSpan={fields.length + 1} className="px-4 py-8 text-center text-gray-400">
+              <TableRow>
+                <TableCell colSpan={fields.length + 1} className="py-8 text-center text-muted-foreground">
                   No items yet.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
             {items.map((item) => (
-              <tr key={item.id}>
+              <TableRow key={item.id}>
                 {fields.map((f) => (
-                  <td key={f.name} className="max-w-xs truncate px-4 py-3">
+                  <TableCell key={f.name} className="max-w-xs truncate">
                     {formatCell(item[f.name], f)}
-                  </td>
+                  </TableCell>
                 ))}
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => setEditing(item)}
-                    className="mr-2 rounded p-1.5 text-gray-500 hover:bg-gray-100"
-                    aria-label="Edit"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="icon" onClick={() => setEditing(item)} aria-label="Edit">
+                    <Pencil />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteTarget(item)}
                     aria-label="Delete"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
-                    <Trash2 size={15} />
-                  </button>
-                </td>
-              </tr>
+                    <Trash2 />
+                  </Button>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">{editing === "new" ? "Add" : "Edit"} {title}</h2>
-              <button onClick={close} aria-label="Close">
-                <X size={20} />
-              </button>
-            </div>
-            <form action={handleSubmit} className="mt-4 space-y-4">
+        <Dialog open onOpenChange={(open) => !open && close()}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>
+                {editing === "new" ? "Add" : "Edit"} {title}
+              </DialogTitle>
+            </DialogHeader>
+            <form action={handleSubmit} className="space-y-4">
               {fields.map((f) => (
                 <div key={f.name}>
-                  {f.type === "checkbox" ? (
-                    <label className="flex items-center gap-2 text-sm font-medium">
-                      <input
-                        type="checkbox"
+                  {f.type === "checkbox" || f.type === "toggle" ? (
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={f.name}
                         name={f.name}
                         defaultChecked={editing !== "new" ? Boolean(editing[f.name]) : false}
                       />
-                      {f.label}
-                    </label>
-                  ) : f.type === "toggle" ? (
-                    <Toggle
-                      name={f.name}
-                      label={f.label}
-                      initialChecked={editing !== "new" ? Boolean(editing[f.name]) : false}
-                    />
+                      <Label htmlFor={f.name}>{f.label}</Label>
+                    </div>
                   ) : f.type === "media" ? (
                     <>
-                      <label className="mb-1 block text-sm font-medium">{f.label}</label>
+                      <Label className="mb-1.5">{f.label}</Label>
                       <MediaField
                         name={f.name}
                         module={f.mediaModule ?? "misc"}
@@ -197,22 +209,31 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
                     />
                   ) : (
                     <>
-                      <label className="mb-1 block text-sm font-medium">{f.label}</label>
+                      <Label className="mb-1.5" htmlFor={f.name}>
+                        {f.label}
+                      </Label>
                       {f.type === "select" ? (
-                        <select
+                        <Select
                           name={f.name}
                           required={f.required}
-                          defaultValue={editing !== "new" ? String(editing[f.name] ?? "") : (f.options?.[0] ?? "")}
-                          className="w-full rounded-md border px-3 py-2"
+                          defaultValue={
+                            editing !== "new" ? String(editing[f.name] ?? "") : (f.options?.[0] ?? "")
+                          }
                         >
-                          {f.options?.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {f.optionLabels?.[opt] ?? opt}
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger id={f.name} className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {f.options?.map((opt) => (
+                              <SelectItem key={opt} value={opt}>
+                                {f.optionLabels?.[opt] ?? opt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       ) : f.type === "textarea" || f.type === "json" ? (
-                        <textarea
+                        <Textarea
+                          id={f.name}
                           name={f.name}
                           required={f.required}
                           defaultValue={
@@ -225,32 +246,57 @@ export function ResourceManager({ title, basePath, fields, items }: Props) {
                                 : ""
                           }
                           rows={4}
-                          className="w-full rounded-md border px-3 py-2 font-mono text-xs"
+                          className={f.type === "json" ? "font-mono text-xs" : undefined}
                         />
                       ) : (
-                        <input
+                        <Input
+                          id={f.name}
                           name={f.name}
                           type={f.type}
                           required={f.required}
                           defaultValue={editing !== "new" ? String(editing[f.name] ?? "") : ""}
-                          className="w-full rounded-md border px-3 py-2"
                         />
                       )}
                     </>
                   )}
                 </div>
               ))}
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <button
-                type="submit"
-                disabled={pending}
-                className="w-full rounded-md bg-primary px-4 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-              >
-                {pending ? "Saving..." : "Save"}
-              </button>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button type="submit" disabled={pending} className="w-full">
+                  {pending && <Loader2 className="animate-spin" />}
+                  {pending ? "Saving..." : "Save"}
+                </Button>
+              </DialogFooter>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {deleteTarget && (
+        <AlertDialog open onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this item?</AlertDialogTitle>
+              <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={pending}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                {pending && <Loader2 className="animate-spin" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   );
@@ -302,8 +348,14 @@ export function MediaField({
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploaded media, next/image isn't worth it here
         <img src={previewUrl} alt="" className="h-12 w-12 rounded object-cover" />
       )}
-      <label className="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50">
-        <UploadCloud size={16} />
+      <label
+        className={cn(
+          buttonVariants({ variant: "outline", size: "sm" }),
+          "cursor-pointer",
+          uploading && "pointer-events-none opacity-50",
+        )}
+      >
+        <UploadCloud />
         {uploading ? "Uploading..." : path ? "Replace" : "Upload"}
         <input type="file" className="hidden" onChange={handleFile} disabled={uploading} />
       </label>
