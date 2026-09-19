@@ -1,0 +1,276 @@
+{
+  "banners": [
+    {
+      "title": "Our Portfolio & Investment: Shivam Cements Limited",
+      "link": "/portfolio"
+    },
+    {
+      "title": "Our Portfolio & Investment: Rasuwagadhi Hydropower",
+      "link": "/portfolio"
+    },
+    {
+      "title": "Our Portfolio & Investment: Liberty Energy Hydropower",
+      "link": "/portfolio"
+    },
+    {
+      "title": "Our Portfolio & Investment: Chilime Hydropower Company Project",
+      "link": "/portfolio"
+    },
+    {
+      "title": "Equity Investment Agreement Ceremony with Siddhartha Cablecar",
+      "link": "/about"
+    },
+    {
+      "title": "Equity Investment Agreement Ceremony with Hydro Empire",
+      "link": null
+    }
+  ],
+  "about": {
+    "about_content": "<p>Prabhu Groups of Companies has been established by the law of the Nepalese government. These companies' goals include investing in a variety of businesses, such as establishing various infrastructure and investing in them, trading businesses, manufacturing businesses, and tourism businesses. Prabhu Holdings and Hydro Development Company Limited, a public company established under the Company Act 2063, in which Prabhu Urja Krishi Paryatan Bikas Limited is a major investor.</p><p>This company specializes in long-term investment and trading. The main goal of this company is long-term investment and providing significant benefits to investors while also contributing to Nepal's development. Prabhu Holdings' main goal as an investing company is to develop the country and society.</p><p>This company's primary investments are in Prabhu Jalabidyut Bikas Limited, Prabhu Cablecar and Tourism Limited, Prabhu Hydro Development Fund, Prabhu Steels and Hydro Investment Company Limited. This company has diversified its investments by investing in various companies and hydroelectric projects, such as banks, insurance, hotels, hydropowers, cement industries, cablecars, pharmaceuticals, agriculture, and so on.</p>",
+    "highlighted_content": "<ul><li><p>The vision of Prabhu Holdings and Hydro Development Company Limited is to be a successful and profitable parent company that provides strategic guidance and financial resources to its subsidiaries while maximizing shareholder value.</p></li></ul>"
+  },
+  "stakeholders": [
+    {
+      "link": "https://holdingshydro.com/"
+    },
+    {
+      "link": "https://prabhukrishi.com/"
+    },
+    {
+      "link": "https://prabhusteel.com/"
+    }
+  ],
+  "associates": [
+    {
+      "link": null
+    },
+    {
+      "link": null
+    },
+    {
+      "link": null
+    },
+    {
+      "link": null
+    },
+    {
+      "link": null
+    },
+    {
+      "link": null
+    }
+  ],
+  "spokesperson": {
+    "name": "Dipen Rai",
+    "role": "Spokesperson",
+    "phone": "9851348164",
+    "email": "",
+    "show": true
+  },
+  "contact": {
+    "phone_primary": "01-5912873",
+    "phone_secondary": "01-5912874",
+    "email": "contact@holdingsprabhu.com",
+    "location": "Kathmandu-32 Tinkune",
+    "opening_hours": "Sun-Fri 10:00 am to 6:00 pm",
+    "whatsapp_number": "9851348164",
+    "registered_office": "Kathmandu-32 Tinkune (Near NMB Bank)",
+    "branch_office": null,
+    "copyright_text": "© 2023. All Rights Reserved by Prabhu Holdings and Hydro Development Limited.",
+    "facebook_url": "https://facebook.com",
+    "instagram_url": "https://instagram.com",
+    "youtube_url": "https://youtube.com"
+  },
+  "portfolios": [
+    {
+      "title": "Sanima Mai Hydropower Limited",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Butwal Power Company Limited",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Oriental Hotels Investment",
+      "type": "Hotels and Tourism"
+    },
+    {
+      "title": "Taragaon Regency Hotel Investment",
+      "type": "Hotels and Tourism"
+    },
+    {
+      "title": "Soaltee Hotel Investment",
+      "type": "Hotels and Tourism"
+    },
+    {
+      "title": "GreenLife Hydropower Limited",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Himalayan Hydropower Limited",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Universal Power Company Limited",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Rasuwagadhi Hydropower Project",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Liberty Energy Hydropower Project",
+      "type": "Hydro Power"
+    },
+    {
+      "title": "Himalayan Bank Limited",
+      "type": "Banks & Insurance"
+    },
+    {
+      "title": "Prime Commercial Bank Limited",
+      "type": "Banks & Insurance"
+    },
+    {
+      "title": "Nepal Life Insurance Co.Ltd",
+      "type": "Banks & Insurance"
+    },
+    {
+      "title": "Sanima Bank Limited",
+      "type": "Banks & Insurance"
+    },
+    {
+      "title": "Nepal Bank Limited",
+      "type": "Banks & Insurance"
+    },
+    {
+      "title": "Prabhu Bank Limited",
+      "type": "Banks & Insurance"
+    }
+  ],
+  "teams": [
+    {
+      "type": "management",
+      "name": "Er. Ramesh Prasad Sapkota",
+      "role": "Representative Director",
+      "company_name": "Prabhu UKPBL"
+    },
+    {
+      "type": "management",
+      "name": "CA. Rabin Khatri",
+      "role": "Representative Director",
+      "company_name": "Prabhu UKPBL"
+    },
+    {
+      "type": "director",
+      "name": "Er. Ramesh Prasad Sapkota",
+      "role": "Representative Director",
+      "company_name": "Prabhu UKPBL"
+    },
+    {
+      "type": "director",
+      "name": "CA. Jhalanath Pokhrel",
+      "role": "Representative Director",
+      "company_name": "Prabhu UKPBL"
+    },
+    {
+      "type": "management",
+      "name": "Bhoj Kumar Khadka",
+      "role": "Representative Chairperson",
+      "company_name": "Prabhu Urja Krishi Paryatan Bikas Limited"
+    },
+    {
+      "type": "director",
+      "name": "Bhoj Kumar Khadka",
+      "role": "Representative Chairperson",
+      "company_name": "Prabhu Urja Krishi Paryatan Bikas Limited"
+    }
+  ],
+  "documents": [
+    {
+      "title": "AGM 1st Notice",
+      "type": "notice_board",
+      "date": "2083-05-22"
+    },
+    {
+      "title": "AGM 2nd Notice",
+      "type": "notice_board",
+      "date": "2083-05-24"
+    },
+    {
+      "title": "AGM Notice (2nd)",
+      "type": "notice_board",
+      "date": "2082-04-26"
+    },
+    {
+      "title": "AGM Notice (1st)",
+      "type": "notice_board",
+      "date": "2082-04-20"
+    },
+    {
+      "title": "SGM 2nd Notice",
+      "type": "notice_board",
+      "date": "2081-10-06"
+    },
+    {
+      "title": "SGM 1st Notice",
+      "type": "notice_board",
+      "date": "2081-10-04"
+    },
+    {
+      "title": "AGM 1st Notice",
+      "type": "notice_board",
+      "date": "2081-04-21"
+    },
+    {
+      "title": "AGM 2nd Notice",
+      "type": "notice_board",
+      "date": "2081-05-03"
+    },
+    {
+      "title": "संस्थापकशेयरमा हकदावी सम्बन्धमा ३५ दिने सुचना",
+      "type": "notice_board",
+      "date": "2079-08-09"
+    }
+  ],
+  "galleries": [
+    {
+      "title": "Annual General Meeting- 2081/82",
+      "date": "2082-05-27",
+      "images": [
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        }
+      ]
+    },
+    {
+      "title": "Equity Investment Agreement Ceremony with Hydro Empire",
+      "date": "2081-11-06",
+      "images": [
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        },
+        {
+          "type": "Gallery"
+        }
+      ]
+    }
+  ]
+}
