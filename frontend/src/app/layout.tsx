@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { sansation } from "@/lib/fonts";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 // Kept intentionally tenant-agnostic: /tenant-not-found renders through this
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           cz-shortcut-listen onto <body> before React hydrates. */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
+        <Toaster />
       </body>
     </html>
   );

@@ -5,7 +5,7 @@ import { getTenant, getTenantSlug } from "@/lib/get-tenant";
 import type { Banner as BannerData, HomeContentBundle, Popup, TenantContact } from "@/lib/types";
 import { PopupModal } from "@/components/PopupModal";
 import { Banner, type BannerSlide } from "@/components/Banner";
-import { Button } from "@/components/ui/Button";
+import { CtaButton } from "@/components/CtaButton";
 
 /** Ported from prabhucablecar-web's (pages)/page.tsx: Banner carousel ->
  * "Who are we?" (rich text + optional Spokesperson card) -> Stakeholders
@@ -102,7 +102,7 @@ export default async function HomePage() {
           )}
 
           <Link href="/about">
-            <Button>Learn More</Button>
+            <CtaButton>Learn More</CtaButton>
           </Link>
         </section>
 
@@ -127,10 +127,10 @@ export default async function HomePage() {
                         <div className="absolute -bottom-8 left-4">
                           {item.link ? (
                             <Link href={item.link} target="_blank" rel="noopener noreferrer">
-                              <Button>Visit Website</Button>
+                              <CtaButton>Visit Website</CtaButton>
                             </Link>
                           ) : (
-                            <Button>Coming Soon</Button>
+                            <CtaButton>Coming Soon</CtaButton>
                           )}
                         </div>
                       </div>
@@ -152,7 +152,7 @@ export default async function HomePage() {
                 Number to Us Request of share Invest Application
               </p>
               <Link href="/request-share">
-                <Button>Apply Now</Button>
+                <CtaButton>Apply Now</CtaButton>
               </Link>
             </div>
           </section>

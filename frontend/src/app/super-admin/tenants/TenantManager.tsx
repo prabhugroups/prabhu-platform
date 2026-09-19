@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   addTenantDomain,
   createTenant,
@@ -11,6 +12,13 @@ import {
   uploadTenantMedia,
 } from "../actions";
 import { mediaUrl } from "@/lib/media-url-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface TenantDomain {
   id: number;
@@ -39,7 +47,6 @@ export function TenantManager({ tenants }: { tenants: Tenant[] }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
-  const [expanded, setExpanded] = useState<number | null>(null);
 
   function handleCreate(formData: FormData) {
     const slug = String(formData.get("slug") ?? "");
@@ -52,6 +59,7 @@ export function TenantManager({ tenants }: { tenants: Tenant[] }) {
         shareholder_module_enabled: false,
         domains: hostname ? [{ hostname, is_primary: true }] : [],
       });
+      toast.success("Tenant created.");
       setCreating(false);
       router.refresh();
     });
@@ -84,123 +92,102 @@ export function TenantManager({ tenants }: { tenants: Tenant[] }) {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Tenants</h1>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-        >
-          <Plus size={16} /> New Tenant
-        </button>
+        <Button onClick={() => setCreating(true)}>
+          <Plus /> New Tenant
+        </Button>
       </div>
 
-      <div className="mt-6 space-y-3">
+      <Accordion type="single" collapsible className="mt-6 rounded-lg border">
         {tenants.map((tenant) => (
-          <div key={tenant.id} className="rounded-lg border bg-white">
-            <div className="flex items-center justify-between px-4 py-3">
-              <button
-                onClick={() => setExpanded(expanded === tenant.id ? null : tenant.id)}
-                className="text-left"
-              >
-                <p className="font-medium">{tenant.name}</p>
-                <p className="text-xs text-gray-400">{tenant.slug}</p>
-              </button>
+          <AccordionItem key={tenant.id} value={String(tenant.id)} className="px-4 last:border-b-0">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <AccordionTrigger className="w-full">
+                  <div className="text-left">
+                    <p className="font-medium">{tenant.name}</p>
+                    <p className="text-xs text-muted-foreground">{tenant.slug}</p>
+                  </div>
+                </AccordionTrigger>
+              </div>
               <div className="flex items-center gap-4 text-sm">
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
+                <label className="flex items-center gap-2">
+                  <Switch
                     checked={tenant.is_active}
                     disabled={pending}
-                    onChange={() => toggleFlag(tenant, "is_active")}
+                    onCheckedChange={() => toggleFlag(tenant, "is_active")}
                   />
                   Active
                 </label>
-                <label className="flex items-center gap-1">
-                  <input
-                    type="checkbox"
+                <label className="flex items-center gap-2">
+                  <Switch
                     checked={tenant.shareholder_module_enabled}
                     disabled={pending}
-                    onChange={() => toggleFlag(tenant, "shareholder_module_enabled")}
+                    onCheckedChange={() => toggleFlag(tenant, "shareholder_module_enabled")}
                   />
                   Shareholder Module
                 </label>
               </div>
             </div>
 
-            {expanded === tenant.id && (
-              <div className="border-t p-4">
-                <p className="mb-2 text-sm font-medium text-gray-600">Domains</p>
-                <ul className="space-y-1">
-                  {tenant.domains.map((d) => (
-                    <li key={d.id} className="flex items-center justify-between text-sm">
-                      <span>
-                        {d.hostname} {d.is_primary && <span className="text-xs text-gray-400">(primary)</span>}
-                      </span>
-                      <button
-                        onClick={() => handleRemoveDomain(tenant.id, d.id)}
-                        className="rounded p-1 text-red-500 hover:bg-red-50"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <form
-                  action={(fd) => handleAddDomain(tenant.id, fd)}
-                  className="mt-3 flex gap-2"
-                >
-                  <input
-                    name="hostname"
-                    placeholder="new-domain.com"
-                    className="flex-1 rounded-md border px-3 py-1.5 text-sm"
-                  />
-                  <button
-                    type="submit"
-                    disabled={pending}
-                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-                  >
-                    Add Domain
-                  </button>
-                </form>
+            <AccordionContent>
+              <p className="mb-2 text-sm font-medium text-muted-foreground">Domains</p>
+              <ul className="space-y-1">
+                {tenant.domains.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between text-sm">
+                    <span>
+                      {d.hostname} {d.is_primary && <span className="text-xs text-muted-foreground">(primary)</span>}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleRemoveDomain(tenant.id, d.id)}
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <form action={(fd) => handleAddDomain(tenant.id, fd)} className="mt-3 flex gap-2">
+                <Input name="hostname" placeholder="new-domain.com" className="flex-1" />
+                <Button type="submit" variant="outline" disabled={pending}>
+                  Add Domain
+                </Button>
+              </form>
 
-                <BrandingForm tenant={tenant} pending={pending} onSaved={() => router.refresh()} />
-              </div>
-            )}
-          </div>
+              <BrandingForm tenant={tenant} pending={pending} onSaved={() => router.refresh()} />
+            </AccordionContent>
+          </AccordionItem>
         ))}
-      </div>
+      </Accordion>
 
-      {creating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">New Tenant</h2>
-              <button onClick={() => setCreating(false)} aria-label="Close">
-                <X size={20} />
-              </button>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Tenant</DialogTitle>
+          </DialogHeader>
+          <form action={handleCreate} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="slug">Slug</Label>
+              <Input id="slug" name="slug" required />
             </div>
-            <form action={handleCreate} className="mt-4 space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Slug</label>
-                <input name="slug" required className="w-full rounded-md border px-3 py-2" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Name</label>
-                <input name="name" required className="w-full rounded-md border px-3 py-2" />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Primary Domain</label>
-                <input name="hostname" placeholder="example.com" className="w-full rounded-md border px-3 py-2" />
-              </div>
-              <button
-                type="submit"
-                disabled={pending}
-                className="w-full rounded-md bg-primary px-4 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-              >
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="hostname">Primary Domain</Label>
+              <Input id="hostname" name="hostname" placeholder="example.com" />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={pending} className="w-full">
+                {pending && <Loader2 className="animate-spin" />}
                 {pending ? "Creating..." : "Create Tenant"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -226,6 +213,7 @@ function BrandingForm({
         font_family: String(formData.get("font_family") ?? ""),
         footer_text: String(formData.get("footer_text") ?? ""),
       });
+      toast.success("Branding saved.");
       onSaved();
     });
   }
@@ -247,60 +235,46 @@ function BrandingForm({
 
   return (
     <div className="mt-4 border-t pt-4">
-      <p className="mb-2 text-sm font-medium text-gray-600">Branding</p>
+      <p className="mb-2 text-sm font-medium text-muted-foreground">Branding</p>
       <form action={handleSave} className="grid gap-3 sm:grid-cols-2">
-        <label className="flex items-center justify-between gap-2 text-sm">
+        <Label className="flex items-center justify-between gap-2 font-normal">
           Primary color
           <input
             type="color"
             name="primary_color"
             defaultValue={tenant.primary_color}
-            className="h-8 w-14 rounded border"
+            className="h-8 w-14 rounded border border-input"
           />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-sm">
+        </Label>
+        <Label className="flex items-center justify-between gap-2 font-normal">
           Secondary color
           <input
             type="color"
             name="secondary_color"
             defaultValue={tenant.secondary_color}
-            className="h-8 w-14 rounded border"
+            className="h-8 w-14 rounded border border-input"
           />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-sm">
+        </Label>
+        <Label className="flex items-center justify-between gap-2 font-normal">
           Primary light color
           <input
             type="color"
             name="primary_light_color"
             defaultValue={tenant.primary_light_color}
-            className="h-8 w-14 rounded border"
+            className="h-8 w-14 rounded border border-input"
           />
-        </label>
-        <label className="flex items-center justify-between gap-2 text-sm">
+        </Label>
+        <Label className="flex items-center justify-between gap-2 font-normal">
           Font family
-          <input
-            name="font_family"
-            defaultValue={tenant.font_family}
-            placeholder="Sansation"
-            className="w-40 rounded-md border px-2 py-1 text-sm"
-          />
-        </label>
-        <label className="sm:col-span-2 text-sm">
-          Footer text
-          <textarea
-            name="footer_text"
-            defaultValue={tenant.footer_text ?? ""}
-            rows={2}
-            className="mt-1 w-full rounded-md border px-2 py-1.5 text-sm"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={pending}
-          className="sm:col-span-2 rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-        >
+          <Input name="font_family" defaultValue={tenant.font_family} placeholder="Sansation" className="w-40" />
+        </Label>
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor={`footer_text_${tenant.id}`}>Footer text</Label>
+          <Textarea id={`footer_text_${tenant.id}`} name="footer_text" defaultValue={tenant.footer_text ?? ""} rows={2} />
+        </div>
+        <Button type="submit" variant="outline" disabled={pending} className="sm:col-span-2">
           Save Branding
-        </button>
+        </Button>
       </form>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -315,12 +289,12 @@ function BrandingForm({
           const url = mediaUrl(current);
           return (
             <div key={field} className="text-sm">
-              <p className="mb-1 text-gray-600">{label}</p>
+              <p className="mb-1 text-muted-foreground">{label}</p>
               {url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={url} alt={label} className="mb-2 h-12 w-auto rounded border object-contain" />
               ) : (
-                <p className="mb-2 text-xs text-gray-400">Not set</p>
+                <p className="mb-2 text-xs text-muted-foreground">Not set</p>
               )}
               <input
                 type="file"
@@ -330,9 +304,9 @@ function BrandingForm({
                   const file = e.target.files?.[0];
                   if (file) handleFileUpload(field, file);
                 }}
-                className="text-xs"
+                className="text-xs text-muted-foreground"
               />
-              {uploading === field && <p className="text-xs text-gray-400">Uploading...</p>}
+              {uploading === field && <p className="text-xs text-muted-foreground">Uploading...</p>}
             </div>
           );
         })}
