@@ -36,7 +36,7 @@ export default async function ShareholdersAdminPage() {
     return (
       <div>
         <h1 className="text-2xl font-bold">Shareholders</h1>
-        <p className="mt-4 text-gray-500">
+        <p className="mt-4 text-muted-foreground">
           The shareholder registry module isn&apos;t enabled for this tenant. Contact your Super Admin to
           enable it.
         </p>
@@ -46,7 +46,7 @@ export default async function ShareholdersAdminPage() {
 
   return (
     <div>
-      <p className="mb-4 text-sm text-gray-500">
+      <p className="mb-4 text-sm text-muted-foreground">
         Core registry fields shown here. Citizenship, bank/demat, address, and nominee records for each
         shareholder are managed via the API (see docs/ARCHITECTURE.md) and can be surfaced here as a
         follow-up.

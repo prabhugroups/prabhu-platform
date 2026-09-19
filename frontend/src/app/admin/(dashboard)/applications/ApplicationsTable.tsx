@@ -2,11 +2,27 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Loader2, Trash2 } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { toast } from "sonner";
 import { mediaUrl } from "@/lib/media-url-client";
 import { deleteApplication, updateApplicationStatus } from "./actions";
+import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
 
 interface Application {
   id: number;
@@ -33,7 +49,8 @@ export function ApplicationsTable({ applications }: { applications: Application[
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [zipping, setZipping] = useState<number | null>(null);
-  const [shareTypeFilter, setShareTypeFilter] = useState<string | "all">("all");
+  const [shareTypeFilter, setShareTypeFilter] = useState<string>("all");
+  const [deleteTarget, setDeleteTarget] = useState<Application | null>(null);
 
   const shareTypes = useMemo(() => {
     const set = new Set<string>();
@@ -52,7 +69,7 @@ export function ApplicationsTable({ applications }: { applications: Application[
     ];
     const available = files.filter((f): f is { label: string; path: string } => Boolean(f.path));
     if (available.length === 0) {
-      alert("No documents uploaded for this application.");
+      toast.error("No documents uploaded for this application.");
       return;
     }
     setZipping(app.id);
@@ -80,10 +97,13 @@ export function ApplicationsTable({ applications }: { applications: Application[
     });
   }
 
-  function handleDelete(id: number) {
-    if (!confirm("Delete this application?")) return;
+  function handleDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
     startTransition(async () => {
       await deleteApplication(id);
+      toast.success("Application deleted.");
+      setDeleteTarget(null);
       router.refresh();
     });
   }
@@ -91,82 +111,116 @@ export function ApplicationsTable({ applications }: { applications: Application[
   return (
     <div className="mt-6">
       {shareTypes.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            onClick={() => setShareTypeFilter("all")}
-            className={shareTypeFilter === "all" ? "active-button" : "inactive-button"}
-          >
-            All Share Types
-          </button>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={shareTypeFilter}
+          onValueChange={(v) => setShareTypeFilter(v || "all")}
+          className="mb-4 flex-wrap"
+        >
+          <ToggleGroupItem value="all">All Share Types</ToggleGroupItem>
           {shareTypes.map((t) => (
-            <button
-              key={t}
-              onClick={() => setShareTypeFilter(t)}
-              className={shareTypeFilter === t ? "active-button" : "inactive-button"}
-            >
+            <ToggleGroupItem key={t} value={t}>
               {t}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       )}
-      <div className="overflow-hidden rounded-lg border bg-white">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-gray-50 text-gray-500">
-          <tr>
-            <th className="px-4 py-3 font-medium">Name</th>
-            <th className="px-4 py-3 font-medium">Contact</th>
-            <th className="px-4 py-3 font-medium">Share Type</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {filtered.length === 0 && (
-            <tr>
-              <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
-                No applications yet.
-              </td>
-            </tr>
-          )}
-          {filtered.map((a) => (
-            <tr key={a.id}>
-              <td className="px-4 py-3">{a.name}</td>
-              <td className="px-4 py-3 text-gray-500">{[a.email, a.phone].filter(Boolean).join(" · ")}</td>
-              <td className="px-4 py-3">{a.share_type ?? "—"}</td>
-              <td className="px-4 py-3">
-                <select
-                  value={a.status}
-                  disabled={pending}
-                  onChange={(e) => handleStatusChange(a.id, e.target.value as Application["status"])}
-                  className={`rounded-full border-0 px-2 py-1 text-xs font-medium ${STATUS_STYLE[a.status]}`}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </td>
-              <td className="px-4 py-3 text-right">
-                <button
-                  onClick={() => handleExportZip(a)}
-                  disabled={zipping === a.id}
-                  title="Download documents as ZIP"
-                  className="mr-2 rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  <Download size={15} />
-                </button>
-                <button
-                  onClick={() => handleDelete(a.id)}
-                  disabled={pending}
-                  className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="overflow-hidden rounded-lg border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead>Share Type</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                  No applications yet.
+                </TableCell>
+              </TableRow>
+            )}
+            {filtered.map((a) => (
+              <TableRow key={a.id}>
+                <TableCell>{a.name}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {[a.email, a.phone].filter(Boolean).join(" · ")}
+                </TableCell>
+                <TableCell>{a.share_type ?? "—"}</TableCell>
+                <TableCell>
+                  <Select
+                    value={a.status}
+                    disabled={pending}
+                    onValueChange={(v) => handleStatusChange(a.id, v as Application["status"])}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className={cn(
+                        "h-auto w-fit rounded-full border-0 px-2 py-1 text-xs font-medium",
+                        STATUS_STYLE[a.status],
+                      )}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleExportZip(a)}
+                    disabled={zipping === a.id}
+                    title="Download documents as ZIP"
+                  >
+                    {zipping === a.id ? <Loader2 className="animate-spin" /> : <Download />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteTarget(a)}
+                    disabled={pending}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
+
+      {deleteTarget && (
+        <AlertDialog open onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this application?</AlertDialogTitle>
+              <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={pending}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                {pending && <Loader2 className="animate-spin" />}
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

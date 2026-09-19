@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ResourceManager } from "@/components/admin/ResourceManager";
 import type { FieldConfig, ResourceRow } from "@/lib/admin/field-types";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const FIELDS: FieldConfig[] = [
   { name: "category", label: "Category", type: "text", required: true },
@@ -26,26 +27,26 @@ export function FaqsManager({ items }: { items: ResourceRow[] }) {
     return Array.from(set).sort();
   }, [items]);
 
-  const [selected, setSelected] = useState<string | "all">("all");
+  const [selected, setSelected] = useState<string>("all");
 
   const filtered = selected === "all" ? items : items.filter((i) => i.category === selected);
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setSelected("all")} className={selected === "all" ? "active-button" : "inactive-button"}>
-          All Categories
-        </button>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        value={selected}
+        onValueChange={(v) => setSelected(v || "all")}
+        className="flex-wrap"
+      >
+        <ToggleGroupItem value="all">All Categories</ToggleGroupItem>
         {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelected(cat)}
-            className={selected === cat ? "active-button" : "inactive-button"}
-          >
+          <ToggleGroupItem key={cat} value={cat}>
             {cat}
-          </button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
 
       <div className="mt-6">
         <ResourceManager title="FAQs" basePath="/admin/faqs" fields={FIELDS} items={filtered} />

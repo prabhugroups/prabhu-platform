@@ -1,6 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
+import { Loader2, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { adminLogin, type LoginState } from "./actions";
 
 const initialState: LoginState = { status: "idle" };
@@ -9,34 +15,32 @@ export function LoginForm() {
   const [state, formAction, pending] = useActionState(adminLogin, initialState);
 
   return (
-    <form action={formAction} className="w-full max-w-sm space-y-4 rounded-lg border bg-white p-8 shadow-sm">
-      <h1 className="text-xl font-bold">Admin Sign In</h1>
-      <div>
-        <label className="mb-1 block text-sm font-medium" htmlFor="username">
-          Username
-        </label>
-        <input id="username" name="username" required className="w-full rounded-md border px-3 py-2" />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium" htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          className="w-full rounded-md border px-3 py-2"
-        />
-      </div>
-      {state.status === "error" && <p className="text-sm text-red-600">{state.message}</p>}
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-md bg-primary px-4 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
-        {pending ? "Signing in..." : "Sign In"}
-      </button>
-    </form>
+    <Card className="w-full max-w-sm">
+      <CardHeader>
+        <CardTitle className="text-xl">Admin Sign In</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form action={formAction} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="username">Username</Label>
+            <Input id="username" name="username" required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" name="password" type="password" required />
+          </div>
+          {state.status === "error" && (
+            <Alert variant="destructive">
+              <TriangleAlert />
+              <AlertDescription>{state.message}</AlertDescription>
+            </Alert>
+          )}
+          <Button type="submit" disabled={pending} className="w-full">
+            {pending && <Loader2 className="animate-spin" />}
+            {pending ? "Signing in..." : "Sign In"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

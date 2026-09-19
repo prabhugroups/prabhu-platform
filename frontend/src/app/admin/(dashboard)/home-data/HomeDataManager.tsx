@@ -2,12 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { HomeContentData, Spokesperson } from "@/lib/types";
 import type { ResourceRow } from "@/lib/admin/field-types";
 import { ResourceManager, MediaField } from "@/components/admin/ResourceManager";
 import { RichTextEditor } from "@/components/fields/RichTextEditor";
-import { Toggle } from "@/components/ui/Toggle";
 import { upsertHomeAbout, upsertSpokesperson } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const TABS = ["About Us", "Our Stake Holders", "Our Associates", "Spokesperson"] as const;
 type Tab = (typeof TABS)[number];
@@ -31,17 +37,15 @@ export function HomeDataManager({
   return (
     <div>
       <h1 className="text-2xl font-bold">Add Homepage Data</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={tab === t ? "active-button" : "inactive-button"}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="mt-4">
+        <TabsList className="h-auto flex-wrap">
+          {TABS.map((t) => (
+            <TabsTrigger key={t} value={t}>
+              {t}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
       <div className="mt-6">
         {tab === "About Us" && <AboutTab about={about} />}
@@ -85,25 +89,23 @@ function AboutTab({ about }: { about: HomeContentData | null }) {
         about_content: (formData.get("about_content") as string) || null,
         highlighted_content: (formData.get("highlighted_content") as string) || null,
       });
+      toast.success("Homepage content updated.");
       router.refresh();
     });
   }
 
   return (
-    <form action={handleSubmit} className="max-w-3xl space-y-6">
+    <form action={handleSubmit} className="space-y-6">
       <RichTextEditor name="about_content" label="About Us Content" initialValue={about?.about_content ?? null} />
       <RichTextEditor
         name="highlighted_content"
         label="Highlighted Content"
         initialValue={about?.highlighted_content ?? null}
       />
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-md bg-primary px-6 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
+      <Button type="submit" disabled={pending}>
+        {pending && <Loader2 className="animate-spin" />}
         {pending ? "Updating..." : "Update"}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -122,40 +124,43 @@ function SpokespersonTab({ spokesperson }: { spokesperson: Spokesperson | null }
         image: (formData.get("image") as string) || null,
         show: formData.get("show") === "on",
       });
+      toast.success("Spokesperson updated.");
       router.refresh();
     });
   }
 
   return (
-    <form action={handleSubmit} className="max-w-lg space-y-4">
+    <form action={handleSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium">Photo</label>
+        <Label className="mb-1.5">Photo</Label>
         <MediaField name="image" module="spokesperson" initialPath={spokesperson?.image ?? null} />
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium">Name</label>
-        <input name="name" defaultValue={spokesperson?.name ?? ""} className="w-full rounded-md border px-3 py-2" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="name">Name</Label>
+          <Input id="name" name="name" defaultValue={spokesperson?.name ?? ""} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="role">Role</Label>
+          <Input id="role" name="role" defaultValue={spokesperson?.role ?? ""} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="phone">Phone (WhatsApp)</Label>
+          <Input id="phone" name="phone" defaultValue={spokesperson?.phone ?? ""} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="email">Email</Label>
+          <Input id="email" name="email" defaultValue={spokesperson?.email ?? ""} />
+        </div>
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium">Role</label>
-        <input name="role" defaultValue={spokesperson?.role ?? ""} className="w-full rounded-md border px-3 py-2" />
+      <div className="flex items-center gap-2">
+        <Switch id="show" name="show" value="on" defaultChecked={spokesperson?.show ?? false} />
+        <Label htmlFor="show">Show on homepage</Label>
       </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium">Phone (WhatsApp)</label>
-        <input name="phone" defaultValue={spokesperson?.phone ?? ""} className="w-full rounded-md border px-3 py-2" />
-      </div>
-      <div>
-        <label className="mb-1 block text-sm font-medium">Email</label>
-        <input name="email" defaultValue={spokesperson?.email ?? ""} className="w-full rounded-md border px-3 py-2" />
-      </div>
-      <Toggle name="show" label="Show on homepage" initialChecked={spokesperson?.show ?? false} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-md bg-primary px-6 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
+      <Button type="submit" disabled={pending}>
+        {pending && <Loader2 className="animate-spin" />}
         {pending ? "Updating..." : "Update"}
-      </button>
+      </Button>
     </form>
   );
 }

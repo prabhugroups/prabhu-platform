@@ -2,10 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { AboutPageData, AboutSection } from "@/lib/types";
 import { RichTextEditor } from "@/components/fields/RichTextEditor";
 import { MediaField } from "@/components/admin/ResourceManager";
 import { upsertAboutPage } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const TABS: { key: AboutSection; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -31,6 +36,7 @@ export function AboutDataManager({ pages }: { pages: AboutPageData[] }) {
         bullet_point_content: (formData.get("bullet_point_content") as string) || null,
         file: (formData.get("file") as string) || null,
       });
+      toast.success("About page updated.");
       router.refresh();
     });
   }
@@ -38,21 +44,19 @@ export function AboutDataManager({ pages }: { pages: AboutPageData[] }) {
   return (
     <div>
       <h1 className="text-2xl font-bold">About Us Data</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={tab === t.key ? "active-button" : "inactive-button"}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as AboutSection)} className="mt-4">
+        <TabsList className="h-auto flex-wrap">
+          {TABS.map((t) => (
+            <TabsTrigger key={t.key} value={t.key}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      <form action={handleSubmit} key={tab} className="mt-6 max-w-3xl space-y-6">
+      <form action={handleSubmit} key={tab} className="mt-6 space-y-6">
         <div>
-          <label className="mb-1 block text-sm font-medium">Image</label>
+          <Label className="mb-1.5">Image</Label>
           <MediaField name="file" module="about" initialPath={current?.file ?? null} />
         </div>
 
@@ -73,13 +77,10 @@ export function AboutDataManager({ pages }: { pages: AboutPageData[] }) {
           </>
         )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-primary px-6 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
+          {pending && <Loader2 className="animate-spin" />}
           {pending ? "Updating..." : "Update"}
-        </button>
+        </Button>
       </form>
     </div>
   );

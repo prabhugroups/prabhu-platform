@@ -1,5 +1,6 @@
 import { adminGet } from "@/lib/api";
 import { requireTenantAdmin } from "@/lib/require-session";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface Summary {
   tenant: string;
@@ -31,10 +32,12 @@ export default async function AdminDashboardPage() {
       <h1 className="text-2xl font-bold">{summary.tenant} — Dashboard</h1>
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-lg border bg-white p-5">
-            <p className="text-2xl font-bold">{c.value}</p>
-            <p className="text-sm text-gray-500">{c.label}</p>
-          </div>
+          <Card key={c.label}>
+            <CardContent>
+              <p className="text-2xl font-bold">{c.value}</p>
+              <p className="text-sm text-muted-foreground">{c.label}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

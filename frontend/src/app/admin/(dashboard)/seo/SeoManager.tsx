@@ -2,9 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { PageSeo } from "@/lib/types";
 import { SEO_PAGES } from "@/lib/seo-pages";
 import { upsertPageSeo } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /** Mirrors the legacy CRM's SEO Settings page: a page-picker pill list,
  * each page's title/description/keywords upserted by page_key (see backend
@@ -24,6 +31,7 @@ export function SeoManager({ pages }: { pages: PageSeo[] }) {
         description: (formData.get("description") as string) || null,
         keywords: (formData.get("keywords") as string) || null,
       });
+      toast.success("SEO settings saved.");
       router.refresh();
     });
   }
@@ -31,48 +39,40 @@ export function SeoManager({ pages }: { pages: PageSeo[] }) {
   return (
     <div>
       <h1 className="text-2xl font-bold">SEO Settings</h1>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {SEO_PAGES.map((p) => (
-          <button
-            key={p.key}
-            onClick={() => setSelected(p.key)}
-            className={selected === p.key ? "active-button" : "inactive-button"}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      <Tabs value={selected} onValueChange={setSelected} className="mt-4">
+        <TabsList className="h-auto flex-wrap">
+          {SEO_PAGES.map((p) => (
+            <TabsTrigger key={p.key} value={p.key}>
+              {p.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-      <form action={handleSubmit} key={selected} className="mt-6 max-w-2xl space-y-4">
-        <div>
-          <label className="mb-1 block text-sm font-medium">Meta Title</label>
-          <input name="title" defaultValue={current?.title ?? ""} className="w-full rounded-md border px-3 py-2" />
+      <form action={handleSubmit} key={selected} className="mt-6 space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="title">Meta Title</Label>
+            <Input id="title" name="title" defaultValue={current?.title ?? ""} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="keywords">Meta Keywords</Label>
+            <Input
+              id="keywords"
+              name="keywords"
+              placeholder="comma, separated, keywords"
+              defaultValue={current?.keywords ?? ""}
+            />
+          </div>
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">Meta Description</label>
-          <textarea
-            name="description"
-            rows={3}
-            defaultValue={current?.description ?? ""}
-            className="w-full rounded-md border px-3 py-2"
-          />
+        <div className="space-y-1.5">
+          <Label htmlFor="description">Meta Description</Label>
+          <Textarea id="description" name="description" rows={3} defaultValue={current?.description ?? ""} />
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium">Meta Keywords</label>
-          <input
-            name="keywords"
-            placeholder="comma, separated, keywords"
-            defaultValue={current?.keywords ?? ""}
-            className="w-full rounded-md border px-3 py-2"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-primary px-6 py-2 font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
+          {pending && <Loader2 className="animate-spin" />}
           {pending ? "Saving..." : "Save"}
-        </button>
+        </Button>
       </form>
     </div>
   );

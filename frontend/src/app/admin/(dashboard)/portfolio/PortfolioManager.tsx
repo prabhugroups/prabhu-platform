@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { ResourceManager } from "@/components/admin/ResourceManager";
 import type { FieldConfig, ResourceRow } from "@/lib/admin/field-types";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const FIELDS: FieldConfig[] = [
   { name: "title", label: "Title", type: "text", required: true },
@@ -26,25 +27,25 @@ export function PortfolioManager({ items }: { items: ResourceRow[] }) {
     return Array.from(set).sort();
   }, [items]);
 
-  const [selected, setSelected] = useState<string | "all">("all");
+  const [selected, setSelected] = useState<string>("all");
   const filtered = selected === "all" ? items : items.filter((i) => i.type === selected);
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => setSelected("all")} className={selected === "all" ? "active-button" : "inactive-button"}>
-          All Types
-        </button>
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        value={selected}
+        onValueChange={(v) => setSelected(v || "all")}
+        className="flex-wrap"
+      >
+        <ToggleGroupItem value="all">All Types</ToggleGroupItem>
         {types.map((t) => (
-          <button
-            key={t}
-            onClick={() => setSelected(t)}
-            className={selected === t ? "active-button" : "inactive-button"}
-          >
+          <ToggleGroupItem key={t} value={t}>
             {t}
-          </button>
+          </ToggleGroupItem>
         ))}
-      </div>
+      </ToggleGroup>
 
       <div className="mt-6">
         <ResourceManager title="Portfolio" basePath="/admin/portfolios" fields={FIELDS} items={filtered} />
