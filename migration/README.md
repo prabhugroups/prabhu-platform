@@ -7,15 +7,19 @@ against a live production DB or a snapshot/replica.
 
 ## Status
 
-Proven end-to-end against the one sample dataset available in this
-workspace (`nepal-land-broker-api/nepallandbroker.sql`, loaded into a
-throwaway MySQL instance): every table's row count matched exactly between
-source and target, and spot-checks of the migrated theme colors, admin
-account, and content-settings rows confirmed the data landed correctly. The
-same script is ready to run against the other 6 tenants once their live DB
-credentials and `/uploads` directories are available — that's a real
-constraint of this environment (no access to production credentials), not a
-gap in the tooling.
+Proven end-to-end against two real datasets:
+
+- `nepal-land-broker-api/nepallandbroker.sql`, loaded into a throwaway MySQL
+  instance.
+- The live local `prabhu_holdings` database, migrated into the `prabhu-holdings`
+  tenant (id 5).
+
+In both cases every table's row count matched exactly between source and
+target, and spot-checks of the migrated theme colors, admin account,
+content-settings, documents, portfolios, and team rows confirmed the data
+(and rewritten upload paths) landed correctly. The same script is ready to
+run against the remaining 5 tenants once their live DB credentials and
+`/uploads` directories are available.
 
 ## Coverage
 
@@ -24,11 +28,12 @@ all 7 legacy tenants: `admins` → `admin_users`, `applications`, `contacts`,
 `documents`, `galleries`+`images`, `general_settings` → `content_settings`,
 `popups`, `portfolios`, `teams`, `themes` → tenant branding columns.
 
-`shares`/`shareholders` and `locations` (present in 4 of 7 legacy tenants)
-are migrated when present in the source DB — the sample dataset didn't
-include them, so that path is implemented per the legacy schema documented
-by the pre-migration audit but not yet proven against real data. Confirm
-against one of those 4 tenants' real data before relying on it at cutover.
+`shares`/`shareholders` (present in the 4 of 7 legacy tenants with
+`shareholder_module_enabled=True`: ichchhakamana, nepal-land-broker,
+prabhusteels, ranimahal) is **not migrated yet** — its legacy shape
+(citizenship/national-id/address sub-records) hasn't been mapped to the
+target `shareholders` module. Implement and prove that mapping before
+running this script at cutover for any of those 4 tenants.
 
 Anything in a tenant's legacy DB that isn't one of the tables above is
 intentionally left unmigrated — the script only touches tables it explicitly
@@ -49,12 +54,22 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # Target tenant must already exist — see backend/app/db/seed.py
 
 .venv/bin/python ../migration/scripts/migrate_tenant.py \
-  --tenant-slug prabhusteels \
+  --tenant prabhusteels \
   --source-host <legacy-db-host> --source-port 3306 \
   --source-user <user> --source-password <password> \
   --source-db prabhusteel_db \
   --source-uploads-dir /path/to/legacy/prabhusteels-api/uploads
 ```
+
+`--tenant` takes a numeric id, a slug, or a display name — e.g. `5`,
+`prabhu-holdings`, or `"Prabhu Holdings"` all resolve to the same tenant.
+Any of `--tenant`, `--source-host`, `--source-user`, `--source-db`,
+`--source-password` can instead be left out: each falls back to its
+`LEGACY_DB_*` environment variable (`LEGACY_DB_HOST`, `LEGACY_DB_USER`,
+`LEGACY_DB_NAME`, `LEGACY_DB_PASSWORD`), and if still unset and the
+terminal is interactive, the script prompts for it (the password prompt is
+hidden). Non-interactive runs (CI) must supply everything via flags or env
+vars.
 
 Prints a per-table row-count report (source vs. migrated) — verify every row
 matches before treating that tenant's migration as complete.

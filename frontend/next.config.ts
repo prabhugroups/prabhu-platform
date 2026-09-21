@@ -40,6 +40,11 @@ const cspHeader = `
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  turbopack: {
+    resolveAlias: {
+      "tw-animate-css": "./node_modules/tw-animate-css/dist/tw-animate.css",
+    },
+  },
   async rewrites() {
     return [
       // Local dev / fallback only — in production Traefik routes /media/*

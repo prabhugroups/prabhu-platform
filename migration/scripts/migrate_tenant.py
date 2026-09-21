@@ -9,16 +9,26 @@ upsert), so it's safe to run repeatedly during a staged cutover.
 Legacy source tables covered (from the 11 confirmed identical across all 7
 tenants by the pre-migration audit): admins, applications, contacts,
 documents, galleries+images, general_settings, popups, portfolios, teams,
-themes. `shares`/`locations` (present in 4/7 tenants) are covered when
-present in the source DB; anything else found in a given tenant's DB that
-isn't one of these is intentionally left unmigrated and printed as a
-warning — decide by hand whether it needs a mapping.
+themes. The `shares`/`shareholders` registry used by tenants with
+`shareholder_module_enabled=True` (ichchhakamana, nepal-land-broker,
+prabhusteels, ranimahal) is NOT migrated by this script yet — its legacy
+shape (citizenship/national-id/address sub-records) hasn't been mapped to
+the target `shareholders` module. Anything else found in a given tenant's DB
+that isn't one of the tables above is intentionally left unmigrated —
+decide by hand whether it needs a mapping.
 
 Usage:
-    python migrate_tenant.py --tenant-slug prabhusteels \\
+    python migrate_tenant.py --tenant prabhusteels \\
         --source-host 127.0.0.1 --source-port 3306 \\
         --source-user root --source-password secret --source-db prabhusteel_db \\
         --source-uploads-dir /path/to/legacy/prabhusteels-api/uploads
+
+`--tenant` accepts a numeric id (5), a slug (prabhu-holdings), or a display
+name ("Prabhu Holdings") — whichever the operator has on hand. Any flag left
+out (tenant, host, user, db, password) falls back to the matching
+LEGACY_DB_* environment variable, then to an interactive prompt if the
+terminal is interactive; non-interactive runs (CI, scripts) must pass
+everything explicitly or via env vars.
 
 Requires the target platform's DB (backend/.env) to already have that tenant
 seeded (see backend/app/db/seed.py) — this script only fills in content, it
@@ -26,13 +36,16 @@ never creates the tenant record itself.
 """
 
 import argparse
+import getpass
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 
 import pymysql
 import pymysql.cursors
+from sqlalchemy import func
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -94,14 +107,39 @@ def copy_uploads(source_uploads_dir: Path | None, target_uploads_dir: Path, tena
     return sum(1 for _ in destination.rglob("*") if _.is_file())
 
 
+def resolve_tenant(db, identifier: str) -> Tenant | None:
+    """Looks up a tenant by numeric id, exact slug, a name typed in with
+    spaces instead of hyphens, or case-insensitive display name — so the
+    operator can type whichever of those they have on hand."""
+    identifier = identifier.strip()
+    if identifier.isdigit():
+        tenant = db.query(Tenant).filter(Tenant.id == int(identifier)).first()
+        if tenant:
+            return tenant
+    tenant = db.query(Tenant).filter(Tenant.slug == identifier).first()
+    if tenant:
+        return tenant
+    normalized_slug = identifier.lower().replace(" ", "-")
+    tenant = db.query(Tenant).filter(Tenant.slug == normalized_slug).first()
+    if tenant:
+        return tenant
+    return db.query(Tenant).filter(func.lower(Tenant.name) == identifier.lower()).first()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tenant-slug", required=True)
-    parser.add_argument("--source-host", required=True)
-    parser.add_argument("--source-port", type=int, default=3306)
-    parser.add_argument("--source-user", required=True)
-    parser.add_argument("--source-password", required=True)
-    parser.add_argument("--source-db", required=True)
+    parser.add_argument(
+        "--tenant", "--tenant-slug", "--tenant-id", "--tenant-name",
+        dest="tenant",
+        default=None,
+        help="Target tenant, by numeric id, slug, or name (e.g. 5, prabhu-holdings, or 'Prabhu Holdings'). "
+             "Prompted interactively if omitted.",
+    )
+    parser.add_argument("--source-host", default=None, help="Defaults to $LEGACY_DB_HOST, prompted if unset.")
+    parser.add_argument("--source-port", type=int, default=int(os.environ.get("LEGACY_DB_PORT", 3306)))
+    parser.add_argument("--source-user", default=None, help="Defaults to $LEGACY_DB_USER, prompted if unset.")
+    parser.add_argument("--source-password", default=None, help="Defaults to $LEGACY_DB_PASSWORD, prompted if unset.")
+    parser.add_argument("--source-db", default=None, help="Defaults to $LEGACY_DB_NAME, prompted if unset.")
     parser.add_argument("--source-uploads-dir", type=Path, default=None)
     parser.add_argument(
         "--target-uploads-dir",
@@ -110,11 +148,43 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    interactive = sys.stdin.isatty()
+
+    if not args.tenant:
+        if not interactive:
+            parser.error("--tenant is required (id, slug, or name)")
+        args.tenant = input("Enter tenant ID or name: ").strip()
+
+    args.source_host = args.source_host or os.environ.get("LEGACY_DB_HOST")
+    if not args.source_host and interactive:
+        args.source_host = input("Legacy DB host [127.0.0.1]: ").strip() or "127.0.0.1"
+    args.source_user = args.source_user or os.environ.get("LEGACY_DB_USER")
+    if not args.source_user and interactive:
+        args.source_user = input("Legacy DB user [root]: ").strip() or "root"
+    args.source_db = args.source_db or os.environ.get("LEGACY_DB_NAME")
+    if not args.source_db and interactive:
+        args.source_db = input("Legacy DB name: ").strip()
+    args.source_password = args.source_password or os.environ.get("LEGACY_DB_PASSWORD")
+    if args.source_password is None and interactive:
+        args.source_password = getpass.getpass("Legacy DB password: ")
+
+    missing = [
+        name for name, value in [
+            ("--source-host", args.source_host),
+            ("--source-user", args.source_user),
+            ("--source-db", args.source_db),
+            ("--source-password", args.source_password),
+        ] if not value
+    ]
+    if missing:
+        parser.error(f"missing required values: {', '.join(missing)}")
+
     db = SessionLocal()
-    tenant = db.query(Tenant).filter(Tenant.slug == args.tenant_slug).first()
+    tenant = resolve_tenant(db, args.tenant)
     if tenant is None:
-        print(f"ERROR: tenant '{args.tenant_slug}' not found — seed it first (see backend/app/db/seed.py)")
+        print(f"ERROR: tenant '{args.tenant}' not found — seed it first (see backend/app/db/seed.py)")
         sys.exit(1)
+    tenant_slug = tenant.slug  # captured before commit expires the ORM object
 
     source = connect_source(args)
     report: dict[str, tuple[int, int]] = {}
@@ -145,9 +215,9 @@ def main() -> None:
         source.close()
         db.close()
 
-    file_count = copy_uploads(args.source_uploads_dir, args.target_uploads_dir, args.tenant_slug)
+    file_count = copy_uploads(args.source_uploads_dir, args.target_uploads_dir, tenant_slug)
 
-    print(f"\nMigration report for tenant '{args.tenant_slug}':")
+    print(f"\nMigration report for tenant '{tenant_slug}':")
     for table, (source_count, migrated_count) in report.items():
         flag = "" if source_count == migrated_count else "  <-- MISMATCH"
         print(f"  {table:20s} source={source_count:4d}  migrated={migrated_count:4d}{flag}")
