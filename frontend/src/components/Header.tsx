@@ -98,12 +98,14 @@ export async function Header({ tenant }: { tenant: Tenant }) {
                 )}
               </div>
               {item.dropdown && (
-                <div className="invisible absolute left-0 top-4 z-10 mt-2 w-48 rounded-lg bg-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
-                  {item.dropdown.map((sub) => (
-                    <Link key={sub.name} href={sub.path} className="block px-4 py-2 hover:bg-gray-100">
-                      {sub.name}
-                    </Link>
-                  ))}
+                <div className="invisible absolute left-0 top-full z-10 w-48 rounded-lg bg-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100">
+                  <div className="py-2">
+                    {item.dropdown.map((sub) => (
+                      <Link key={sub.name} href={sub.path} className="block px-4 py-2 hover:bg-gray-100">
+                        {sub.name}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
