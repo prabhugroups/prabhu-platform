@@ -12,4 +12,4 @@ PyJWT>=2.10
 bcrypt>=4.1
 python-multipart>=0.0.20
 Pillow>=11.1
-pillow-heif>=0.21
+pillow-heif>=1.8.0
