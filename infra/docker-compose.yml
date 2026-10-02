@@ -120,6 +120,9 @@ services:
     command: ["sh", "-c", "alembic upgrade head && python -m app.db.seed"]
     environment:
       <<: *backend-env
+      # Tenant preset to create on first deploy (backend/app/db/seed_data/
+      # tenant_presets/<name>.json), or empty: tenants come from the console.
+      SEED_TENANTS: ${SEED_TENANTS:-}
       # Initial Super Admin — only used when none exists yet.
       SEED_SUPER_ADMIN_USERNAME: ${SEED_SUPER_ADMIN_USERNAME:-superadmin}
       SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-}

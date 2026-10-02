@@ -26,7 +26,8 @@ SEED_SUPER_ADMIN_PASSWORD='change-me' .venv/bin/python -m app.db.seed
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-`app.db.seed` only creates the 7 tenant rows + locations + super admin —
+`app.db.seed` only creates the `SEED_TENANTS` preset's tenant rows (`prabhu`
+in `backend/.env.example` = the 7 Prabhu sites) + locations + super admin —
 every tenant's public site is blank until real content is entered through
 the CMS. For a quick local demo (or to give another dev something to look
 at immediately), seed one tenant's public-site content from a small,

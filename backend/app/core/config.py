@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # once. See app/core/rate_limit.py for why that matters.
     behind_proxy: bool = False
 
+    # Tenant preset created by `python -m app.db.seed` (app/db/seed.py):
+    # a file name in app/db/seed_data/tenant_presets/, or empty/"none".
+    seed_tenants: str = ""
+
     @property
     def database_url(self) -> str:
         return (

@@ -26,18 +26,15 @@ something's wrong.
 
 ## 2. First deployment
 
-The server needs no clone of this repo — just the infra files (copy them
-once from your machine; CI keeps them in sync afterwards):
+The server needs no clone of this repo and no files copied by hand — the
+CI deploy job uploads `docker-compose.yml` and `traefik/` on every deploy.
+The one file you create yourself is `infra/.env`, because it holds the
+secrets (start from `infra/.env.example` in the repo):
 
 ```bash
-# from your machine, at the repo root
-ssh <user>@<host> 'mkdir -p /opt/prabhu-platform/infra'
-rsync -av --relative infra/./docker-compose.yml infra/./traefik infra/./.env.example \
-  <user>@<host>:/opt/prabhu-platform/infra/
-
 # on the server
-cd /opt/prabhu-platform/infra
-cp .env.example .env
+mkdir -p /opt/prabhu-platform/infra && cd /opt/prabhu-platform/infra
+nano .env          # paste .env.example's contents, fill in real values
 chmod 600 .env
 ```
 
@@ -78,7 +75,7 @@ docker compose up -d --wait
 
 Startup order is enforced by healthchecks: `mysql` → `migrate` (one-shot:
 `alembic upgrade head` + the idempotent `python -m app.db.seed`, which seeds
-the 7 known tenants, Nepal locations and the Super Admin) → `backend` →
+the `SEED_TENANTS` preset if set, Nepal locations and the Super Admin) → `backend` →
 `frontend` → `traefik`. If a migration fails, `migrate` exits non-zero and
 the API never starts on a half-migrated schema.
 
@@ -144,39 +141,76 @@ you're leaving added a migration, check it's backwards-compatible first
   (linux/amd64, layer-cached between runs) and pushes them to
   `ghcr.io/<owner>/prabhu-platform-{backend,frontend}` tagged with the commit
   SHA and `latest`. Uses the workflow's own `GITHUB_TOKEN` — no secret to set.
-- **`deploy`** (`main` only, after a successful publish; **skipped until the
-  `DEPLOY_HOST` variable is set**): runs the steps in section 3 over SSH. It
-  logs in to GHCR with the job's short-lived token, so no registry
-  credential is stored on the server. Runs in the `production` environment
-  — add required reviewers there (Settings → Environments) if deploys should
-  need a click. Can also be re-run via *Actions → CI → Run workflow*.
+- **`deploy`** (`main` only, after a successful publish): deploys to every
+  company listed in the `DEPLOY_TARGETS` repository variable (skipped while
+  it's unset), each in parallel and independently — one company's failure
+  never cancels another's. Runs the steps in section 3 over SSH, logging in
+  to GHCR with the job's short-lived token. *Actions → CI → Run workflow*
+  re-runs it, optionally for a single company (`target` input).
 
-### One-time setup
+### Multiple companies, one repo
 
-**GitHub** (Settings → Secrets and variables → Actions):
+Every company running this platform gets its **own server, domains,
+tenants and secrets**, and shares the code and images:
 
-| Kind | Name | Value |
+| Lives in | Per company | Shared |
 |---|---|---|
-| Variable | `DEPLOY_HOST` | Server IP or hostname. Setting this turns deploys on. |
-| Variable | `DEPLOY_USER` | SSH user on the server (in the `docker` group). |
-| Variable | `DEPLOY_PORT` | Optional, default `22`. |
-| Variable | `DEPLOY_PATH` | Optional, default `/opt/prabhu-platform`. |
-| Secret | `DEPLOY_SSH_KEY` | Private key of a keypair made for CI only (`ssh-keygen -t ed25519 -f deploy_key -N ""`). |
-| Secret | `DEPLOY_SSH_FINGERPRINT` | Recommended: the server's host key SHA256 fingerprint (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server), so CI refuses an impostor host. |
+| GitHub Environment named after the company | server address, SSH key, approval rules | — |
+| That server's `infra/.env` | domains, TLS, DB/JWT secrets, `SEED_TENANTS`, super admin | — |
+| That server's database | tenants, admins, content | — |
+| Repo + GHCR | — | code, images, compose/Traefik config |
+
+### One-time setup (repository)
+
+Settings → Secrets and variables → Actions → **Variables** tab:
+
+| Variable | Value |
+|---|---|
+| `DEPLOY_TARGETS` | JSON array of environments that every push to `main` deploys, e.g. `["prabhu"]`, later `["prabhu","acme"]`. Unset = no deploys. |
 
 If the organization restricts package publishing, allow it under the org's
 Settings → Packages, and make sure Settings → Actions → General → Workflow
-permissions doesn't cap `GITHUB_TOKEN` below what the job asks for.
+permissions doesn't cap `GITHUB_TOKEN` below what the jobs ask for.
 
-**Server:**
+### Adding a company (repeat per company)
 
-1. Install Docker Engine + Compose v2; add `DEPLOY_USER` to the `docker` group.
-2. Add the CI public key (`deploy_key.pub`) to `DEPLOY_USER`'s `~/.ssh/authorized_keys`.
-3. Copy the infra files once (CI keeps them in sync after that):
-   `rsync -av --relative infra/./docker-compose.yml infra/./traefik <user>@<host>:/opt/prabhu-platform/infra/`
-4. Create `infra/.env` (section 2) — `chmod 600` — and do the first
-   `docker compose pull && docker compose up -d --wait`, or just push to
-   `main` and let CI deploy.
+**1. Server.** Install Docker Engine + Compose v2 and create a deploy user:
+
+```bash
+sudo adduser --disabled-password --gecos "" deploy
+sudo usermod -aG docker deploy
+sudo mkdir -p /opt/prabhu-platform/infra && sudo chown -R deploy: /opt/prabhu-platform
+```
+
+Create `/opt/prabhu-platform/infra/.env` as that user (section 2) with the
+company's domains, TLS settings, fresh secrets and `SEED_TENANTS` (a preset
+name, or empty to create tenants in the console), then `chmod 600` it.
+
+**2. CI key.** On your own machine, a keypair used only by CI for this server:
+
+```bash
+ssh-keygen -t ed25519 -C "ci-deploy-<company>" -f deploy_<company> -N ""
+ssh-copy-id -i deploy_<company>.pub deploy@<server-ip>
+ssh-keyscan -t ed25519 <server-ip> | ssh-keygen -lf - | awk '{print $2}'   # fingerprint
+```
+
+**3. GitHub Environment.** Settings → Environments → New environment, named
+after the company (lowercase, e.g. `prabhu`). Optionally add required
+reviewers / restrict to the `main` branch. Then, in that environment:
+
+| Kind | Name | Value |
+|---|---|---|
+| Variable | `DEPLOY_HOST` | Server IP or hostname |
+| Variable | `DEPLOY_USER` | `deploy` |
+| Variable | `DEPLOY_PORT` | Optional, default `22` |
+| Variable | `DEPLOY_PATH` | Optional, default `/opt/prabhu-platform` |
+| Secret | `DEPLOY_SSH_KEY` | Contents of the private key `deploy_<company>` |
+| Secret | `DEPLOY_SSH_FINGERPRINT` | The `SHA256:...` fingerprint from step 2 |
+
+**4. Go live.** Add the environment's name to `DEPLOY_TARGETS`, then
+*Actions → CI → Run workflow* with `target` = the company. The first deploy
+uploads the infra files, pulls the images, migrates, seeds and starts the
+stack; after that every push to `main` deploys it.
 
 ## 5. Backups
 

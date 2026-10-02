@@ -64,7 +64,9 @@ One MySQL schema, every tenant-owned table carries a `tenant_id` FK
   reference data, seeded once instead of duplicated per tenant.
 
 See `backend/app/modules/*/models.py` for exact columns; `backend/app/db/seed.py`
-seeds the 7 known tenants + this reference data + one super_admin.
+seeds this reference data, one super_admin, and optionally a preset of
+tenants (`SEED_TENANTS`, e.g. `prabhu` — the 7 Prabhu Group sites). Tenants
+are per deployment: each company running the platform has its own.
 
 ## Backend — FastAPI modular monolith
 

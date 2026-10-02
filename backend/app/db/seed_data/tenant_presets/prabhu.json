@@ -1,0 +1,68 @@
+{
+  "description": "The 7 Prabhu Group subsidiary sites and their legacy domains.",
+  "tenants": [
+    {
+      "slug": "hydro-holdings",
+      "name": "Hydro Holdings",
+      "domains": [
+        "holdingshydro.com",
+        "www.holdingshydro.com"
+      ],
+      "shareholder_module_enabled": false
+    },
+    {
+      "slug": "ichchhakamana",
+      "name": "Ichchhakamana Cable Car",
+      "domains": [
+        "ichchhakamanacablecar.com",
+        "www.ichchhakamanacablecar.com"
+      ],
+      "shareholder_module_enabled": true
+    },
+    {
+      "slug": "nepal-land-broker",
+      "name": "Nepal Land Broker",
+      "domains": [
+        "nepallandbroker.com",
+        "www.nepallandbroker.com"
+      ],
+      "shareholder_module_enabled": true
+    },
+    {
+      "slug": "prabhucablecar",
+      "name": "Prabhu Cable Car",
+      "domains": [
+        "prabhucablecar.com",
+        "www.prabhucablecar.com"
+      ],
+      "shareholder_module_enabled": false
+    },
+    {
+      "slug": "prabhu-holdings",
+      "name": "Prabhu Holdings",
+      "domains": [
+        "holdingsprabhu.com",
+        "www.holdingsprabhu.com"
+      ],
+      "shareholder_module_enabled": false
+    },
+    {
+      "slug": "prabhusteels",
+      "name": "Prabhu Steels",
+      "domains": [
+        "prabhusteel.com",
+        "www.prabhusteel.com"
+      ],
+      "shareholder_module_enabled": true
+    },
+    {
+      "slug": "ranimahal",
+      "name": "Ranimahal Cable Car",
+      "domains": [
+        "ranimahalcablecar.com",
+        "www.ranimahalcablecar.com"
+      ],
+      "shareholder_module_enabled": true
+    }
+  ]
+}

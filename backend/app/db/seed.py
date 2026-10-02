@@ -1,6 +1,10 @@
-"""Idempotent seed script: the 7 known Prabhu Group tenants + their real
-domains (from each legacy repo's next.config.ts/env.example), the Nepal
-locations reference data, and one initial super_admin.
+"""Idempotent seed script: an optional preset of tenants (SEED_TENANTS), the
+Nepal locations reference data, and one initial super_admin.
+
+Tenants are per deployment: each company running this platform has its
+own. SEED_TENANTS names a preset in seed_data/tenant_presets/ (e.g.
+`prabhu` — the 7 Prabhu Group sites and their legacy domains); unset or
+`none` seeds no tenants, and they're created in the Super Admin console.
 
 Branding colors are seeded with the legacy fallback defaults (#0059ab /
 #17ad4c / #4a90e2) — the one real production theme row we could inspect
@@ -18,6 +22,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import hash_password
 from app.db import base_all  # noqa: F401 — registers all models on Base.metadata
 from app.db.session import Base, SessionLocal, engine
@@ -26,34 +31,43 @@ from app.modules.locations.models import District, Municipality, Province
 from app.modules.tenants.models import Tenant, TenantDomain
 
 SEED_DATA_DIR = Path(__file__).parent / "seed_data" / "nepal_locations"
+TENANT_PRESETS_DIR = Path(__file__).parent / "seed_data" / "tenant_presets"
 
 # slug, name, domains (apex first = primary), shareholder_module_enabled
-TENANTS = [
-    ("hydro-holdings", "Hydro Holdings", ["holdingshydro.com", "www.holdingshydro.com"], False),
-    (
-        "ichchhakamana",
-        "Ichchhakamana Cable Car",
-        ["ichchhakamanacablecar.com", "www.ichchhakamanacablecar.com"],
-        True,
-    ),
-    ("nepal-land-broker", "Nepal Land Broker", ["nepallandbroker.com", "www.nepallandbroker.com"], True),
-    ("prabhucablecar", "Prabhu Cable Car", ["prabhucablecar.com", "www.prabhucablecar.com"], False),
-    ("prabhu-holdings", "Prabhu Holdings", ["holdingsprabhu.com", "www.holdingsprabhu.com"], False),
-    ("prabhusteels", "Prabhu Steels", ["prabhusteel.com", "www.prabhusteel.com"], True),
-    ("ranimahal", "Ranimahal Cable Car", ["ranimahalcablecar.com", "www.ranimahalcablecar.com"], True),
-]
+
+def available_tenant_presets() -> list[str]:
+    return sorted(p.stem for p in TENANT_PRESETS_DIR.glob("*.json"))
 
 
-def seed_tenants(db: Session) -> None:
-    for slug, name, domains, shareholder_enabled in TENANTS:
-        if db.query(Tenant).filter(Tenant.slug == slug).first():
+def seed_tenants(db: Session, preset: str) -> None:
+    """Creates the preset's tenants (domains: first = primary) that don't
+    exist yet, by slug. Never modifies or removes existing tenants, so it's
+    safe on every deploy and after tenants are edited in the console."""
+    preset = preset.strip().lower()
+    if preset in ("", "none"):
+        print("SEED_TENANTS not set — no tenants seeded (create them in the Super Admin console)")
+        return
+    # Matched against the directory listing, never joined into a path, so
+    # the env value can't point outside tenant_presets/.
+    if preset not in available_tenant_presets():
+        raise SystemExit(
+            f"Unknown SEED_TENANTS preset '{preset}'. "
+            f"Available: {', '.join(available_tenant_presets()) or '(none)'}, or 'none'."
+        )
+    entries = json.loads((TENANT_PRESETS_DIR / f"{preset}.json").read_text())["tenants"]
+    for entry in entries:
+        if db.query(Tenant).filter(Tenant.slug == entry["slug"]).first():
             continue
-        tenant = Tenant(slug=slug, name=name, shareholder_module_enabled=shareholder_enabled)
-        for i, hostname in enumerate(domains):
+        tenant = Tenant(
+            slug=entry["slug"],
+            name=entry["name"],
+            shareholder_module_enabled=entry.get("shareholder_module_enabled", False),
+        )
+        for i, hostname in enumerate(entry.get("domains", [])):
             tenant.domains.append(TenantDomain(hostname=hostname, is_primary=(i == 0)))
         db.add(tenant)
     db.commit()
-    print(f"Tenants: {db.query(Tenant).count()} present")
+    print(f"Tenants: {db.query(Tenant).count()} present (preset '{preset}')")
 
 
 def seed_locations(db: Session) -> None:
@@ -106,8 +120,9 @@ def seed_super_admin(db: Session) -> None:
     admin = AdminUser(
         tenant_id=None,
         name="Platform Super Admin",
-        email=os.environ.get("SEED_SUPER_ADMIN_EMAIL", "superadmin@prabhugroup.com"),
-        username=os.environ.get("SEED_SUPER_ADMIN_USERNAME", "superadmin"),
+        # `or`, not a .get default: Compose passes unset values as "".
+        email=os.environ.get("SEED_SUPER_ADMIN_EMAIL") or "superadmin@example.com",
+        username=os.environ.get("SEED_SUPER_ADMIN_USERNAME") or "superadmin",
         password_hash=hash_password(password),
         role=AdminRole.super_admin,
     )
@@ -120,7 +135,7 @@ def main() -> None:
     Base.metadata.create_all(bind=engine)  # no-op once Alembic migrations have run
     db = SessionLocal()
     try:
-        seed_tenants(db)
+        seed_tenants(db, get_settings().seed_tenants)
         seed_locations(db)
         seed_super_admin(db)
     finally:

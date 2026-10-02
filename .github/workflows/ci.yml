@@ -4,8 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
-  # Re-run the full pipeline (tests -> publish -> deploy) for the current main.
+  # Re-run the full pipeline (tests -> publish -> deploy) for the current main,
+  # optionally deploying to a single company's environment only.
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy only this environment (e.g. prabhu). Empty = every DEPLOY_TARGETS entry."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -119,23 +125,50 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # Ships this commit's infra files (compose + Traefik) to the server, points
-  # it at the just-published images via IMAGE_TAG in the server's infra/.env,
-  # pulls, runs migrations and swaps containers. The server holds no git
-  # clone — only infra/ and its own .env, which CI never overwrites.
-  # Skipped until the DEPLOY_HOST repository variable is set.
+  # One deployment per company. Each is a GitHub Environment (Settings →
+  # Environments) named after the company, holding that company's server
+  # (DEPLOY_HOST, DEPLOY_USER, ... variables; DEPLOY_SSH_KEY, ... secrets)
+  # and its own protection rules. The DEPLOY_TARGETS repository variable
+  # lists which environments every push to main deploys, as a JSON array:
+  # ["prabhu"]  or  ["prabhu", "acme"]. Skipped while it's unset.
+  #
+  # Per target: ships this commit's infra files (compose + Traefik) to the
+  # server, points it at the just-published images via IMAGE_TAG in the
+  # server's infra/.env, pulls, runs migrations and swaps containers. The
+  # server holds no git clone — only infra/ and its own .env (domains,
+  # tenants, secrets), which CI never overwrites beyond the IMAGE_TAG line.
   deploy:
     needs: [publish-images]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_HOST != ''
+    if: >-
+      github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
+      (inputs.target != '' || vars.DEPLOY_TARGETS != '')
     runs-on: ubuntu-latest
-    environment: production # add required reviewers in Settings → Environments to gate deploys
+    strategy:
+      fail-fast: false # one company's failed deploy never cancels another's
+      matrix:
+        target: ${{ fromJSON(inputs.target != '' && format('["{0}"]', inputs.target) || vars.DEPLOY_TARGETS) }}
+    environment: ${{ matrix.target }}
     concurrency:
-      group: deploy-production
+      group: deploy-${{ matrix.target }}
       cancel-in-progress: false
     permissions:
       contents: read
       packages: read
     steps:
+      - name: Check environment configuration
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+          USER: ${{ vars.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          missing=""
+          [ -n "$HOST" ] || missing="$missing DEPLOY_HOST(variable)"
+          [ -n "$USER" ] || missing="$missing DEPLOY_USER(variable)"
+          [ -n "$KEY" ] || missing="$missing DEPLOY_SSH_KEY(secret)"
+          if [ -n "$missing" ]; then
+            echo "::error::Environment '${{ matrix.target }}' is missing:$missing"
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           sparse-checkout: infra
