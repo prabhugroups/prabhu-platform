@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { adminMutate } from "@/lib/api";
+import { adminMutate, clientIpHeaders } from "@/lib/api";
 import { requireTenantAdmin } from "@/lib/require-session";
 
 /** Generic mutate actions shared by every "simple" tenant-scoped CMS
@@ -42,7 +42,7 @@ export async function uploadMedia(module: string, formData: FormData): Promise<s
   const session = await requireTenantAdmin();
   const res = await fetch(`${BASE_URL}/admin/media/upload?module=${encodeURIComponent(module)}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${session.token}` },
+    headers: { ...(await clientIpHeaders()), Authorization: `Bearer ${session.token}` },
     body: formData,
   });
   if (!res.ok) {

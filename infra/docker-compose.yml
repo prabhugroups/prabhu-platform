@@ -1,80 +1,179 @@
-# Modular-monolith topology: one Traefik, one Next.js, one FastAPI, one
-# MySQL. No per-tenant containers, no Redis, no queue — 7 tenants of simple
-# CMS content don't need them (see docs/ARCHITECTURE.md for the reasoning).
+# Production stack: one Traefik, one Next.js, one FastAPI, one MySQL. No
+# per-tenant containers — every tenant is served by the same frontend and
+# resolved from the request Host (see docs/ARCHITECTURE.md).
 #
-# Usage: cd infra && cp .env.example .env  (fill in real secrets) && \
-#        docker compose up -d --build
+#   https://<slug>.$BASE_DOMAIN      -> tenant <slug>'s public site + /admin CMS
+#   https://$SUPER_ADMIN_DOMAIN      -> Super Admin console
+#   https://<CUSTOM_DOMAINS entry>   -> tenant mapped by a tenant_domains row
+#
+# Usage:
+#   cd infra && cp .env.example .env    # fill in real values
+#   docker compose pull && docker compose up -d --wait
+#
+# All configuration lives in infra/.env. Required values fail fast via
+# ${VAR:?...} below; Traefik's routing/TLS is rendered from the same values
+# by traefik/entrypoint.sh.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend-env: &backend-env
+  ENVIRONMENT: production
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: ${DB_NAME:?set DB_NAME in infra/.env}
+  DB_USER: ${DB_USER:?set DB_USER in infra/.env}
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in infra/.env}
+  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in infra/.env}
+  UPLOADS_DIR: /app/uploads
+  # <slug>.BASE_DOMAIN -> tenant <slug> (backend/app/modules/tenants/router.py)
+  TENANT_BASE_DOMAIN: ${BASE_DOMAIN:?set BASE_DOMAIN in infra/.env}
+  # Real visitor IPs from Traefik's X-Forwarded-For (backend/app/core/rate_limit.py).
+  # Safe to trust from any peer: the backend is only reachable on the
+  # docker networks below, and Traefik rewrites X-Forwarded-For itself.
+  BEHIND_PROXY: "true"
+  FORWARDED_ALLOW_IPS: "*"
+
+# Images are built and pushed to GHCR by CI (.github/workflows/ci.yml) and
+# only pulled here. IMAGE_TAG is the git commit SHA of the release; the CI
+# deploy job writes it into infra/.env on every deploy. To build locally
+# instead, add docker-compose.dev.yml (it carries the `build:` sections).
+x-backend-image: &backend-image
+  image: ${IMAGE_REGISTRY:-ghcr.io/prabhugroups}/prabhu-platform-backend:${IMAGE_TAG:-latest}
 
 services:
   traefik:
-    image: traefik:v3.2
+    image: traefik:v3.6
     restart: unless-stopped
-    entrypoint: ["/entrypoint.sh"]
-    command:
-      - "--configFile=/etc/traefik/traefik.yml"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/usr/local/bin/prabhu-entrypoint.sh"]
     environment:
-      SUPER_ADMIN_DOMAIN: "${SUPER_ADMIN_DOMAIN}"
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      SUPER_ADMIN_DOMAIN: ${SUPER_ADMIN_DOMAIN:?set SUPER_ADMIN_DOMAIN in infra/.env}
+      CUSTOM_DOMAINS: ${CUSTOM_DOMAINS:-}
+      TLS_CHALLENGE: ${TLS_CHALLENGE:-dns}
+      TENANT_SUBDOMAINS: ${TENANT_SUBDOMAINS:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_CA_SERVER: ${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      ACME_DNS_PROVIDER: ${ACME_DNS_PROVIDER:-cloudflare}
+      # DNS-01 credentials, read by Traefik's DNS provider (lego). For a
+      # provider other than Cloudflare, add its variables here and in .env —
+      # see https://doc.traefik.io/traefik/https/acme/#providers
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./traefik/entrypoint.sh:/entrypoint.sh:ro
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/entrypoint.sh:/usr/local/bin/prabhu-entrypoint.sh:ro
+      - ./traefik/traefik.yml:/etc/traefik/src/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/src/dynamic:ro
       - traefik_acme:/letsencrypt
       # Bind mount (not a named volume) so fail2ban, running directly on the
       # host, can read the access log at a real filesystem path — see
       # docs/SECURITY.md.
       - ./traefik-logs:/var/log/traefik
+    networks: [edge]
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--configFile=/etc/traefik/traefik.yml"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   mysql:
     image: mysql:8.0
     restart: unless-stopped
+    logging: *logging
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     environment:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in infra/.env}
     volumes:
       - mysql_data:/var/lib/mysql
+    networks: [internal]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      # $$ defers expansion to the container shell, so the password never
+      # appears in `docker inspect` output of the healthcheck command.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 30s
 
-  backend:
-    build: ../backend
-    restart: unless-stopped
+  # One-shot: schema migrations + idempotent seed, once per `up`. The API
+  # only starts after this exits 0, so a failed migration never serves traffic.
+  migrate:
+    <<: *backend-image
+    restart: "no"
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+    command: ["sh", "-c", "alembic upgrade head && python -m app.db.seed"]
     environment:
-      DB_HOST: mysql
-      DB_PORT: "3306"
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
-      UPLOADS_DIR: /app/uploads
-      SEED_SUPER_ADMIN_USERNAME: ${SEED_SUPER_ADMIN_USERNAME}
-      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL}
-      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD}
-    volumes:
-      - uploads_data:/app/uploads
+      <<: *backend-env
+      # Initial Super Admin — only used when none exists yet.
+      SEED_SUPER_ADMIN_USERNAME: ${SEED_SUPER_ADMIN_USERNAME:-superadmin}
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD:-}
+    networks: [internal]
     depends_on:
       mysql:
         condition: service_healthy
 
-  frontend:
-    build: ../frontend
+  backend:
+    <<: *backend-image
     restart: unless-stopped
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *backend-env
+      UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
+    volumes:
+      - uploads_data:/app/uploads
+    networks: [internal, edge]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    image: ${IMAGE_REGISTRY:-ghcr.io/prabhugroups}/prabhu-platform-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    logging: *logging
+    security_opt: ["no-new-privileges:true"]
     environment:
       INTERNAL_API_URL: http://backend:8000
-      NODE_ENV: production
+    networks: [edge]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/tenant-not-found').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+
+networks:
+  # Traefik <-> frontend/backend. The only network with published ports.
+  edge: {}
+  # backend <-> MySQL. `internal` = no route to or from the outside world.
+  internal:
+    internal: true
 
 volumes:
   mysql_data:

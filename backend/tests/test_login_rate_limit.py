@@ -65,3 +65,12 @@ def test_lockout_is_scoped_to_the_offending_username_not_the_whole_ip(client, db
 
     resp = client.post("/auth/login", json={"username": "admin_b", "password": "password123"})
     assert resp.status_code == 200
+
+
+def test_internal_server_side_calls_bypass_ip_limiter_behind_proxy(client, monkeypatch):
+    # Behind Traefik, a request without X-Forwarded-For is the Next.js server
+    # rendering pages for many visitors from one container IP — it must not
+    # exhaust the per-IP budget (see RateLimitMiddleware.dispatch).
+    monkeypatch.setattr(settings, "behind_proxy", True)
+    for _ in range(settings.rate_limit_requests + 10):
+        assert client.get("/health").status_code == 200

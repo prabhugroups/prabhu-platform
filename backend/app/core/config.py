@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
 
+    # Subdomain tenant routing: with TENANT_BASE_DOMAIN=example.com, a request
+    # for `<slug>.example.com` resolves to the tenant with that slug whenever
+    # no explicit tenant_domains row matches the hostname first (see
+    # app/modules/tenants/router.py:resolve_tenant_by_domain). Empty disables
+    # the fallback, leaving explicit tenant_domains rows as the only mapping.
+    tenant_base_domain: str = ""
+
+    # True when running behind Traefik (infra/docker-compose.yml). Traefik
+    # always sets X-Forwarded-For on what it forwards, and uvicorn's
+    # --proxy-headers turns that into request.client.host — so a request
+    # WITHOUT one never came from the public edge: it's the Next.js server
+    # calling over the docker-internal network on behalf of many visitors at
+    # once. See app/core/rate_limit.py for why that matters.
+    behind_proxy: bool = False
+
     @property
     def database_url(self) -> str:
         return (
@@ -67,7 +82,11 @@ def validate_production_config(settings: Settings) -> None:
     if settings.environment != "production":
         return
     insecure = [
-        name for name, default in _INSECURE_DEFAULTS.items() if getattr(settings, name) == default
+        name
+        for name, default in _INSECURE_DEFAULTS.items()
+        if getattr(settings, name) == default
+        # The "change-me-..." placeholders shipped in the .env.example files.
+        or getattr(settings, name).lower().startswith(("change-me", "changeme"))
     ]
     if insecure:
         raise RuntimeError(

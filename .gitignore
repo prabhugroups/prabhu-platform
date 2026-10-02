@@ -14,6 +14,7 @@ next-env.d.ts
 !.env.example
 !.env.local.example
 infra/.env
+infra/.deploy-history
 
 # Uploads / runtime data
 backend/uploads/

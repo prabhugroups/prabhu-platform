@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import get_settings
 from app.core.deps import get_tenant_scope, require_super_admin, resolve_public_tenant
 from app.db.session import get_db
 from app.modules.tenants.models import Tenant, TenantDomain
@@ -24,11 +25,23 @@ def _normalize_host(hostname: str) -> str:
     return host.split(":")[0]
 
 
+def _subdomain_slug(host: str) -> str | None:
+    """`<slug>.<TENANT_BASE_DOMAIN>` -> slug. Exactly one label deep, so
+    `a.b.example.com` and the bare base domain itself never match."""
+    base = get_settings().tenant_base_domain.lower().strip().strip(".")
+    if not base or not host.endswith(f".{base}"):
+        return None
+    label = host[: -len(base) - 1]
+    return label if label and "." not in label else None
+
+
 @router.get("/internal/tenants/by-domain/{hostname}", response_model=TenantPublicOut)
 def resolve_tenant_by_domain(hostname: str, db: Session = Depends(get_db)) -> Tenant:
     """Called by the Next.js middleware only (reachable exclusively over the
-    docker-internal network — FastAPI is never routed by Traefik). Matches
-    the incoming Host header, apex or www, to exactly one tenant."""
+    docker-internal network — Traefik routes only /media/* to FastAPI).
+    Matches the incoming Host header, apex or www, to exactly one tenant:
+    an explicit tenant_domains row wins; otherwise `<slug>.<TENANT_BASE_DOMAIN>`
+    resolves by tenant slug."""
     host = _normalize_host(hostname)
     domain = (
         db.query(TenantDomain)
@@ -36,9 +49,14 @@ def resolve_tenant_by_domain(hostname: str, db: Session = Depends(get_db)) -> Te
         .filter(TenantDomain.hostname == host, Tenant.is_active.is_(True))
         .first()
     )
-    if domain is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No tenant maps to this hostname")
-    return domain.tenant
+    if domain is not None:
+        return domain.tenant
+    slug = _subdomain_slug(host)
+    if slug is not None:
+        tenant = db.query(Tenant).filter(Tenant.slug == slug, Tenant.is_active.is_(True)).first()
+        if tenant is not None:
+            return tenant
+    raise HTTPException(status.HTTP_404_NOT_FOUND, "No tenant maps to this hostname")
 
 
 @router.get("/public/theme", response_model=TenantPublicOut)

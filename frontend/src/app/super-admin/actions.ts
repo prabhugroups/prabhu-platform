@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { adminMutate } from "@/lib/api";
+import { adminMutate, clientIpHeaders } from "@/lib/api";
 import { requireSuperAdmin } from "@/lib/require-session";
 
 export async function createTenant(data: {
@@ -46,7 +46,11 @@ export async function uploadTenantMedia(tenantId: number, formData: FormData): P
   const session = await requireSuperAdmin();
   const res = await fetch(`${BASE_URL}/admin/media/upload?module=branding`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${session.token}`, "X-Tenant-Id": String(tenantId) },
+    headers: {
+      ...(await clientIpHeaders()),
+      Authorization: `Bearer ${session.token}`,
+      "X-Tenant-Id": String(tenantId),
+    },
     body: formData,
   });
   if (!res.ok) {

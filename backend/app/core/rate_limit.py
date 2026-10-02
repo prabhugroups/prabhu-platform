@@ -21,6 +21,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._hits: dict[str, deque] = defaultdict(deque)
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        if settings.behind_proxy and "x-forwarded-for" not in request.headers:
+            # Server-side render fetches from the Next.js container: every
+            # visitor's page load shares that one container IP, so counting
+            # them here would throttle the whole site at 120 backend calls a
+            # minute. Per-visitor limits for this traffic are enforced at the
+            # Traefik edge instead (infra/traefik rate-limit middleware).
+            return await call_next(request)
         client_ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
         window = self._hits[client_ip]

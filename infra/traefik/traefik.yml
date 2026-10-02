@@ -1,7 +1,17 @@
-# Static Traefik config. No Docker-socket provider is used on purpose — all
-# routing is declared explicitly in dynamic/routers.yml, so Traefik never
-# needs docker.sock mounted (smaller attack surface than label-based
-# discovery for a fixed, small set of 7 tenant domains + 1 admin domain).
+# Static Traefik config — the environment-independent part. At container
+# start, entrypoint.sh copies this file and appends the
+# `certificatesResolvers` block for the chosen TLS_CHALLENGE (Traefik ignores
+# CLI flags whenever a config file is used, and never interpolates env vars
+# inside it, so rendering is the only way to make ACME settings come from
+# infra/.env).
+#
+# No Docker-socket provider is used on purpose — all routing is rendered
+# into the file provider from env by entrypoint.sh, so Traefik never needs
+# docker.sock mounted (it can't enumerate or control other containers).
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
 entryPoints:
   web:
     address: ":80"
@@ -47,23 +57,14 @@ entryPoints:
 
 providers:
   file:
+    # Rendered by entrypoint.sh inside the container (not a bind mount), so
+    # edits to infra/traefik/dynamic/* take effect on container restart.
     directory: /etc/traefik/dynamic
-    watch: true
+    watch: false
 
-certificatesResolvers:
-  letsencrypt:
-    acme:
-      # email is set via the --certificatesresolvers.letsencrypt.acme.email
-      # command-line flag in docker-compose.yml (compose substitutes
-      # ${ACME_EMAIL} there; Traefik's own YAML config files are not
-      # env-var-interpolated).
-      storage: /letsencrypt/acme.json
-      httpChallenge:
-        entryPoint: web
-
-api:
-  dashboard: true
-  insecure: false
+# Liveness endpoint on the internal :8080 `traefik` entrypoint (never
+# published) — used by the compose healthcheck.
+ping: {}
 
 log:
   level: INFO

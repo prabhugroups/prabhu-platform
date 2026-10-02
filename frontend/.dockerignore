@@ -1,0 +1,15 @@
+# Keep secrets, local build output and test artefacts out of the build
+# context — without this, node_modules/.next and .env.local get baked in.
+node_modules/
+.next/
+.env
+.env.*
+!.env.local.example
+e2e/
+test-results/
+playwright-report/
+playwright/.cache/
+tsconfig.tsbuildinfo
+Dockerfile
+.dockerignore
+*.md

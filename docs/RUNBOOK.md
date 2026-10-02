@@ -79,38 +79,50 @@ one via the Super Admin console, or directly against the API — see
 `backend/app/modules/auth/admin_users_router.py`). The seeded super_admin
 signs in the same way and lands on `/super-admin/tenants`.
 
-## Docker Compose (production-shaped)
+## Docker Compose
+
+Production (see [`DEPLOYMENT.md`](DEPLOYMENT.md) for DNS, TLS and secrets):
 
 ```bash
 cd infra
-cp .env.example .env   # fill in real DB/JWT secrets, ACME_EMAIL, SUPER_ADMIN_DOMAIN
-docker compose up -d --build
+cp .env.example .env   # BASE_DOMAIN, SUPER_ADMIN_DOMAIN, TLS, DB/JWT secrets
+docker compose pull && docker compose up -d --wait   # images come from GHCR
 ```
 
-`docker-compose.dev.yml` adds host-port publishing + Adminer for local
-container-based development:
+To run the full production stack locally — Traefik, subdomain routing and
+all — set these in `infra/.env` (plus any non-placeholder secrets):
+
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+BASE_DOMAIN=localhost
+SUPER_ADMIN_DOMAIN=admin.localhost
+TLS_CHALLENGE=selfsigned
 ```
 
-The backend container runs `alembic upgrade head` and the idempotent seed
-script on every start, so a fresh environment is usable immediately. See
-[`DEPLOYMENT.md`](DEPLOYMENT.md) for the real production version of this
-(DNS, secret generation, CI/CD, backups).
+then `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`
+and open `https://prabhusteels.localhost`, `https://hydro-holdings.localhost`,
+`https://admin.localhost` (accept the self-signed cert). `*.localhost`
+resolves to 127.0.0.1 without `/etc/hosts` edits. The dev override also
+publishes MySQL/backend/frontend on 127.0.0.1 and adds Adminer on :8080.
+
+The one-shot `migrate` service runs `alembic upgrade head` and the
+idempotent seed before the API starts, so a fresh environment is usable
+immediately.
 
 ## Onboarding a new tenant (or a new domain for an existing one)
 
-1. Super Admin console → Tenants → New Tenant (slug, name, primary domain),
-   or call `POST /super/tenants` directly.
-2. Add a real DNS A/AAAA record for the new domain pointing at the server.
-3. Add a matching router block to `infra/traefik/dynamic/routers.yml.template`
-   for that hostname (Traefik's file provider hot-reloads on change — no
-   restart needed) and redeploy that one file. See
-   [`TRAEFIK.md`](TRAEFIK.md) for why both this step and step 1 are
-   required together.
-4. Create the tenant's first `tenant_admin` from the Super Admin console.
-   See [`CMS.md`](CMS.md) for the Super Admin / Tenant Admin role model and
-   what each can configure.
+1. Super Admin console → Tenants → New Tenant. Its slug is its subdomain:
+   slug `acme` is served at `https://acme.<BASE_DOMAIN>` immediately — the
+   wildcard DNS record and wildcard cert (`TLS_CHALLENGE=dns`) already
+   cover it. With `TLS_CHALLENGE=http`, also append the slug to
+   `TENANT_SUBDOMAINS` in `infra/.env` and run `docker compose up -d`.
+2. Different subdomain or the tenant's own domain: add the hostname under
+   the tenant's Domains in the console (explicit domains win over the slug).
+   A hostname outside `BASE_DOMAIN` also goes in `CUSTOM_DOMAINS` in
+   `infra/.env` (then `docker compose up -d`), with DNS pointing at the
+   server. See [`TRAEFIK.md`](TRAEFIK.md).
+3. Create the tenant's first `tenant_admin` from the Super Admin console;
+   they sign in at `https://<slug>.<BASE_DOMAIN>/admin/login`.
+   See [`CMS.md`](CMS.md) for the role model.
 
 ## Migrating a legacy tenant's data
 
@@ -123,7 +135,7 @@ once per tenant, at that tenant's cutover.
   the backend. All existing sessions are invalidated immediately (by
   design — there's no refresh-token mechanism to preserve).
 - **Add/remove a domain for a tenant**: Super Admin console → Tenants →
-  expand a tenant → add/remove under Domains, then update
-  `infra/traefik/dynamic/routers.yml.template` to match and redeploy Traefik.
+  expand a tenant → add/remove under Domains. Only hostnames outside
+  `BASE_DOMAIN` also need a `CUSTOM_DOMAINS` change in `infra/.env`.
 - **Enable the shareholder registry for a tenant**: Super Admin console →
   Tenants → toggle "Shareholder Module" for that tenant.

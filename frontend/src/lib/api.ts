@@ -1,4 +1,5 @@
 import "server-only";
+import { headers } from "next/headers";
 
 const BASE_URL = process.env.INTERNAL_API_URL;
 if (!BASE_URL) {
@@ -24,6 +25,21 @@ async function request<T>(path: string, init: RequestInit & { headers?: Record<s
   return (await res.json()) as T;
 }
 
+/** The visitor's IP as Traefik reported it (first X-Forwarded-For entry),
+ * re-sent on every uncached backend call so FastAPI's per-IP limits — the
+ * login lockout in particular — apply to that visitor rather than to this
+ * one Next.js server that all traffic arrives from (see backend
+ * app/core/rate_limit.py). Deliberately never added to cached reads: a
+ * per-visitor header would split the fetch cache by visitor. */
+export async function clientIpHeaders(): Promise<Record<string, string>> {
+  try {
+    const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim();
+    return ip ? { "X-Forwarded-For": ip } : {};
+  } catch {
+    return {}; // outside a request scope (e.g. build time)
+  }
+}
+
 /** Reads for the public site — never require a browser-facing API key;
  * FastAPI is only reachable server-side. Cached for 60s: content changes
  * via the CMS don't need to be instant, and this is a simple content site. */
@@ -34,10 +50,10 @@ export function publicGet<T>(tenantSlug: string, path: string): Promise<T> {
   });
 }
 
-export function publicPost<T>(tenantSlug: string, path: string, body: unknown): Promise<T> {
+export async function publicPost<T>(tenantSlug: string, path: string, body: unknown): Promise<T> {
   return request<T>(path, {
     method: "POST",
-    headers: { "X-Tenant-Slug": tenantSlug, "Content-Type": "application/json" },
+    headers: { ...(await clientIpHeaders()), "X-Tenant-Slug": tenantSlug, "Content-Type": "application/json" },
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -48,14 +64,14 @@ interface AdminOpts {
   tenantId?: number; // only needed for a super_admin acting "as" a tenant
 }
 
-export function adminGet<T>(opts: AdminOpts, path: string): Promise<T> {
+export async function adminGet<T>(opts: AdminOpts, path: string): Promise<T> {
   return request<T>(path, {
-    headers: adminHeaders(opts),
+    headers: { ...(await clientIpHeaders()), ...adminHeaders(opts) },
     cache: "no-store",
   });
 }
 
-export function adminMutate<T>(
+export async function adminMutate<T>(
   opts: AdminOpts,
   method: "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
@@ -63,7 +79,11 @@ export function adminMutate<T>(
 ): Promise<T> {
   return request<T>(path, {
     method,
-    headers: { ...adminHeaders(opts), ...(body ? { "Content-Type": "application/json" } : {}) },
+    headers: {
+      ...(await clientIpHeaders()),
+      ...adminHeaders(opts),
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });

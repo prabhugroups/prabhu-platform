@@ -1,18 +1,32 @@
+# syntax=docker/dockerfile:1
+
 FROM node:22-alpine AS deps
 WORKDIR /app
+RUN apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 
 FROM node:22-alpine AS builder
 WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+# lib/api.ts refuses to load without INTERNAL_API_URL, and `next build`
+# imports it while collecting page data. The value is only a build-time
+# placeholder — the runtime value comes from the container environment
+# (infra/docker-compose.yml) and is read per request, never inlined.
+ARG INTERNAL_API_URL=http://backend:8000
+ENV INTERNAL_API_URL=${INTERNAL_API_URL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# INTERNAL_API_URL is read at request time (server-only code), not needed at build time.
 RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    # Docker sets HOSTNAME to the container id, which would make Next's
+    # standalone server bind only to the container's own IP.
+    HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public

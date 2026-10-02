@@ -19,7 +19,7 @@ This platform replaces all 14 repos with one modular monolith.
 ## Topology
 
 ```
-7 tenant domains + 1 admin domain → Traefik (TLS) → Next.js (only public entrypoint)
+<slug>.BASE_DOMAIN + admin domain → Traefik (TLS) → Next.js (only public entrypoint)
                                                           │  (docker-internal network only)
                                                           ▼
                                                      FastAPI
@@ -120,12 +120,13 @@ stored at `uploads/<tenant_slug>/<module>/...`, served back by FastAPI's
 
 ## Traefik
 
-One router per tenant hostname (apex + www) → `frontend`; one path router
-for `/media` → `backend`; one router for the Super Admin console on its own
-domain (`SUPER_ADMIN_DOMAIN`, a real DNS record you create at deploy time —
-not guessed here). Let's Encrypt via ACME HTTP-01 (no wildcard cert needed —
-7 distinct apex domains). See `infra/traefik/` and `docs/TRAEFIK.md` for the
-full routing/TLS/domain-onboarding details.
+Every tenant is a subdomain of one base domain: `<slug>.BASE_DOMAIN` →
+`frontend`, which resolves the tenant from the Host header (explicit
+`tenant_domains` rows first, then the slug). One router for the Super Admin
+console on its own host (`SUPER_ADMIN_DOMAIN`), optional routers for tenant
+custom domains, and one path router for `/media` → `backend`. Routing and
+TLS (a wildcard Let's Encrypt cert via DNS-01 by default) are rendered from
+`infra/.env` at Traefik start. See `docs/TRAEFIK.md`.
 
 ## What's intentionally deferred
 

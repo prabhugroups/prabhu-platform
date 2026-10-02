@@ -29,8 +29,8 @@ all-at-once, so a problem with one tenant never affects the other six.
 Because cutover is just a DNS/router flip, rollback is the same operation in
 reverse:
 
-1. Point that tenant's DNS record back at its legacy server (or remove /
-   revert its router block in `infra/traefik/dynamic/routers.yml.template`
+1. Point that tenant's DNS record back at its legacy server (or remove its
+   hostname from `CUSTOM_DOMAINS` in `infra/.env`, `docker compose up -d`,
    and restore the legacy container's exposure).
 2. The legacy stack was never stopped, so it's immediately serving traffic
    again with whatever data it had — nothing to restore.

@@ -1,131 +1,114 @@
 # Traefik
 
 How routing, TLS, and domain onboarding work. Config lives in
-`infra/traefik/`.
+`infra/traefik/`; every environment-specific value comes from `infra/.env`.
 
-## Why Traefik, and why this shape
+## Routing model
 
-One reverse proxy in front of two backend services (`frontend`, `backend`),
-terminating TLS for 8 hostnames (7 tenant domains + 1 Super Admin domain).
-No Docker-socket / label-based service discovery is used — with a fixed,
-small set of domains, an explicit file-based router list
-(`infra/traefik/dynamic/routers.yml.template`) is simpler to read, diff in
-a PR, and reason about than labels scattered across `docker-compose.yml`,
-and it means Traefik never needs `docker.sock` mounted (smaller attack
-surface — Traefik can't enumerate or control other containers).
+```
+https://<slug>.BASE_DOMAIN/...        -> frontend   (tenant resolved from Host)
+https://SUPER_ADMIN_DOMAIN/...        -> frontend   (operator console, tighter rate limit)
+https://<CUSTOM_DOMAINS entry>/...    -> frontend   (optional tenant-owned domains)
+https://<any routed host>/media/...   -> backend    (FastAPI static files)
+http://...                            -> 301 to https
+```
+
+With `BASE_DOMAIN=example.com`, `a.example.com` and `b.example.com` hit the
+**same** Next.js container; `frontend/src/proxy.ts` sends the Host to
+`GET /internal/tenants/by-domain/{host}`, which resolves it in this order
+(`backend/app/modules/tenants/router.py`):
+
+1. An explicit `tenant_domains` row for that hostname (managed in the Super
+   Admin console) — lets `steel.example.com` or `prabhusteel.com` map to
+   any tenant.
+2. Otherwise `<slug>.TENANT_BASE_DOMAIN` → the active tenant with that
+   slug (`TENANT_BASE_DOMAIN` is set from `BASE_DOMAIN` by Compose).
+3. Otherwise the visitor is redirected to `/tenant-not-found`.
+
+So adding a tenant needs no Traefik change: create it in the console and
+`https://<slug>.example.com` works (with a wildcard cert, see below).
+
+Other rules, all in the rendered router config:
+
+- `/super-admin` is only routed on `SUPER_ADMIN_DOMAIN`. On any other host
+  it is redirected there — the console never renders on a tenant domain.
+- `https://SUPER_ADMIN_DOMAIN/` redirects to `/super-admin`.
+- The bare `BASE_DOMAIN` and deeper names (`x.y.example.com`) are not
+  routed (Traefik 404).
+- FastAPI is reachable from outside only for `/media/*`; everything else
+  goes Next.js → backend over the docker network.
 
 ## Files
 
 ```
 infra/traefik/
-  traefik.yml                    static config: entrypoints, ACME, providers
-  entrypoint.sh                  renders the one templated value, then execs traefik
+  entrypoint.sh          renders the full config from env, then execs traefik
+  traefik.yml            static base: entrypoints, trusted proxy IPs, logs
   dynamic/
-    routers.yml.template          the actual routing rules (see below)
+    middlewares.yml      shared edge middlewares (headers, rate limits, ...)
 ```
 
-### `traefik.yml` (static)
+Traefik ignores CLI flags whenever a config file is used, and never
+interpolates env vars inside its config files — so `entrypoint.sh` writes
+the effective config inside the container at every start:
 
-- `entryPoints.web` (`:80`) redirects everything to `entryPoints.websecure` (`:443`).
-- `providers.file` watches `/etc/traefik/dynamic` — editing
-  `routers.yml` there is picked up live, **no Traefik restart needed**.
-- `certificatesResolvers.letsencrypt` uses ACME **HTTP-01** (not DNS-01):
-  each domain proves ownership by serving a challenge file over plain HTTP,
-  which is why `:80` must stay reachable from the internet even though it
-  immediately redirects. No wildcard cert is needed since there are 7
-  distinct apex domains, not subdomains of one domain.
-- The ACME account email is **not** set in this file — Traefik's own YAML
-  config isn't env-var-interpolated, so it's passed as a command-line flag
-  in `docker-compose.yml` instead: `--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}`
-  (compose *does* substitute `${...}` there).
+- `/etc/traefik/traefik.yml` = `traefik.yml` + the ACME resolvers for the
+  chosen `TLS_CHALLENGE`.
+- `/etc/traefik/dynamic/routers.yml` = routers and services built from
+  `BASE_DOMAIN`, `SUPER_ADMIN_DOMAIN`, `CUSTOM_DOMAINS`, `TENANT_SUBDOMAINS`.
 
-### `entrypoint.sh` + the `${SUPER_ADMIN_DOMAIN}` template
+It validates every hostname (DNS characters only) and required setting, and
+exits with a clear message instead of starting with a broken config. Inspect
+the result with `docker compose exec traefik cat /etc/traefik/dynamic/routers.yml`.
+Config changes apply on `docker compose up -d` (Traefik is recreated when
+its env changes) or `docker compose restart traefik` (after editing files).
 
-Same env-var-interpolation gap applies to the dynamic config file, so
-`routers.yml.template` is checked in with a literal `${SUPER_ADMIN_DOMAIN}`
-placeholder, and a small `sed`-based entrypoint script renders it into
-`routers.yml` (the file Traefik actually reads) on container start, using
-the `SUPER_ADMIN_DOMAIN` env var from `docker-compose.yml`. This is
-deliberately a shell one-liner, not a templating engine or a custom Traefik
-build — one variable didn't justify either.
+No Docker-socket / label-based discovery is used: Traefik never needs
+`docker.sock` mounted, so it can't enumerate or control other containers.
 
-### `dynamic/routers.yml.template`
+## TLS (`TLS_CHALLENGE`)
 
-One router per tenant hostname (apex + `www`), all pointing at the
-`frontend` service:
+| Mode | Certificates | Needs |
+|---|---|---|
+| `dns` (default) | One wildcard `BASE_DOMAIN` + `*.BASE_DOMAIN` cert via ACME DNS-01 | `ACME_DNS_PROVIDER` + that provider's API credentials (`CF_DNS_API_TOKEN` for Cloudflare) |
+| `http` | One cert per hostname via HTTP-01 (wildcards are impossible over HTTP-01) | Every tenant subdomain listed in `TENANT_SUBDOMAINS` |
+| `selfsigned` | Traefik's default self-signed cert | Nothing — local/staging testing only |
 
-```yaml
-prabhusteels:
-  rule: "Host(`prabhusteel.com`) || Host(`www.prabhusteel.com`)"
-  entryPoints: [websecure]
-  service: frontend
-  tls: { certResolver: letsencrypt }
-```
+`SUPER_ADMIN_DOMAIN` shares the wildcard cert when it's a direct subdomain
+of `BASE_DOMAIN`; it and `CUSTOM_DOMAINS` otherwise use HTTP-01. Both ACME
+resolvers keep their state in the `traefik_acme` volume. Set
+`ACME_CA_SERVER` to Let's Encrypt staging while testing.
 
-Plus one path-scoped router that's the **only** way FastAPI is ever reached
-from the public internet:
+For a DNS provider other than Cloudflare, set `ACME_DNS_PROVIDER` to its
+[lego provider name](https://doc.traefik.io/traefik/https/acme/#providers)
+and add its credential variables to the `traefik` service's `environment`
+in `docker-compose.yml` and to `infra/.env`.
 
-```yaml
-media:
-  rule: "PathPrefix(`/media`)"
-  entryPoints: [websecure]
-  service: backend
-  tls: { certResolver: letsencrypt }
-  priority: 100   # must win over any tenant's Host-only router
-```
+## Onboarding a tenant or domain
 
-Everything else the frontend needs from the backend (page data, admin
-actions, form submits) happens server-side over the docker-internal network
-(`http://backend:8000`), never through Traefik — see
-`backend/app/main.py`'s comment on why there's no CORS middleware as a
-result, and `docs/ARCHITECTURE.md` for the full request-flow diagram.
-
-The `services` block at the bottom just names the two upstreams:
-
-```yaml
-services:
-  frontend: { loadBalancer: { servers: [{ url: "http://frontend:3000" }] } }
-  backend:  { loadBalancer: { servers: [{ url: "http://backend:8000" }] } }
-```
-
-## Onboarding a new domain
-
-Two things have to happen together, or the domain either won't route or
-won't resolve to the right tenant:
-
-1. **Traefik**: add a router block to `routers.yml.template` for the new
-   hostname (copy an existing tenant's block, or add the hostname to an
-   existing tenant's `Host(...)` rule if it's an alternate domain for a
-   tenant that already exists), then redeploy just that file — Traefik picks
-   it up live, no restart.
-2. **Application**: add the same hostname as a `tenant_domains` row for that
-   tenant — via the Super Admin console (Tenants → expand a tenant → add
-   under Domains) or `POST /super/tenants/{id}/domains`. This is what
-   `frontend/src/proxy.ts` actually checks (via
-   `GET /internal/tenants/by-domain/{host}`) to decide which tenant's
-   content to render — Traefik routing a domain to the `frontend` service
-   doesn't by itself make the app recognize it.
-
-Don't forget the DNS record itself, pointed at the server's IP, before
-either step matters in practice.
+- **New tenant on a subdomain**: create it in the Super Admin console.
+  `https://<slug>.BASE_DOMAIN` works immediately under `TLS_CHALLENGE=dns`.
+  Under `http`, also add the slug to `TENANT_SUBDOMAINS` and
+  `docker compose up -d`.
+- **A subdomain that isn't the slug** (`steel.example.com` → `prabhusteels`):
+  add the hostname under the tenant's Domains in the console. Nothing else.
+- **A tenant's own domain** (`prabhusteel.com`): add it under the tenant's
+  Domains in the console **and** to `CUSTOM_DOMAINS` in `infra/.env`, point
+  its DNS at the server, then `docker compose up -d`.
 
 ## The Super Admin domain
 
-`SUPER_ADMIN_DOMAIN` (set in `infra/.env`) is **not** one of the 7 tenant
-domains — it's a separate operator-only hostname you own (e.g.
-`platform-admin.yourcompany.com`) that also routes to `frontend`, but where
-`/super-admin/*` is reachable. `frontend/src/proxy.ts` explicitly skips
-tenant-domain resolution for `/admin/*` and `/super-admin/*` paths (both use
-cookie sessions, not the tenant-slug header), specifically so this domain
-never gets redirected to the tenant-not-found page just because it isn't a
-registered tenant. Point real DNS at it and set the env var before
-deploying — there's no hardcoded fallback domain, on purpose (guessing one
-would be worse than requiring you to set it).
+`SUPER_ADMIN_DOMAIN` (e.g. `admin.example.com`) is an operator-only host
+that also routes to `frontend`. Don't create a tenant whose slug equals its
+first label (e.g. `admin`) — the console router wins over the tenant one.
+`frontend/src/proxy.ts` skips tenant resolution for `/admin/*` and
+`/super-admin/*`, so the console host never hits `/tenant-not-found`.
+Tenant admins sign in on their own tenant host (`/admin/login`).
 
 ## Rate limiting & headers
 
-Every public router in `routers.yml.template` chains four middlewares
-(defined once at the top of that file, under `http.middlewares`):
+Every public router chains four middlewares, defined once in
+`infra/traefik/dynamic/middlewares.yml`:
 
 - **`security-headers`**: HSTS, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy`, `X-Frame-Options: DENY`, and a restrictive
@@ -150,7 +133,7 @@ DDoS flood from saturating the VM's network link — that requires something
 in front of the origin; see `docs/SECURITY.md` for the Cloudflare setup this
 platform is designed to sit behind.
 
-Tune the numbers in `routers.yml.template`'s `http.middlewares` block if
+Tune the numbers in `middlewares.yml` (then restart Traefik) if
 real traffic patterns turn out to need it — they're conservative defaults
 for "7 low-traffic corporate sites," not measured against production load.
 
@@ -165,30 +148,42 @@ backend's own login throttle) see each visitor's real IP instead of
 Cloudflare's edge IP for every request. Before that switch, it's inert —
 Traefik falls back to the real TCP peer IP for anyone connecting directly.
 
+Behind Traefik, the backend sees two kinds of callers, and treats them
+differently (`BEHIND_PROXY=true`, set in `docker-compose.yml`):
+
+- **Requests carrying `X-Forwarded-For`** — `/media/*` straight from
+  Traefik, and the Next.js server's *uncached* calls (login, form submits,
+  admin CMS), which re-send the visitor's IP (`frontend/src/lib/api.ts:clientIpHeaders`).
+  uvicorn's `--proxy-headers` makes that IP `request.client.host`, so the
+  per-IP limiter and the login lockout apply per visitor.
+- **Requests without it** — Next.js server-side rendering for many visitors
+  at once from one container IP. These skip the backend's per-IP limiter
+  (counting them would throttle the whole site); the Traefik edge limits
+  above already apply per visitor.
+
 ## Local development
 
-There's no Traefik in the local dev loop (`docs/RUNBOOK.md`) — `next dev`
-and `uvicorn` are run directly on different ports, and tenant resolution is
-exercised with a `Host:` header on requests (`curl -H "Host: ..."`) or
-`/etc/hosts` entries pointing the real domains at `127.0.0.1`. The
-`docker-compose.dev.yml` override does still run Traefik if you're testing
-the containerized stack, but for day-to-day frontend/backend iteration it's
-unnecessary overhead.
+- **Without Docker** (`docs/RUNBOOK.md`): no Traefik. With
+  `TENANT_BASE_DOMAIN=localhost` in `backend/.env`, open
+  `http://<slug>.localhost:3000` — `*.localhost` resolves to 127.0.0.1.
+- **Full stack in Docker**: `BASE_DOMAIN=localhost`,
+  `SUPER_ADMIN_DOMAIN=admin.localhost`, `TLS_CHALLENGE=selfsigned` in
+  `infra/.env`, then `https://<slug>.localhost` (see `docs/RUNBOOK.md`).
 
 ## Troubleshooting
 
-- **Certificate not issuing**: confirm port `80` (not just `443`) is
-  reachable from the public internet for that domain — HTTP-01 fails
-  silently behind a firewall that only opens `443`. Check
-  `docker compose logs traefik` for ACME errors; the account/cert state
-  lives in the `traefik_acme` volume (`/letsencrypt/acme.json`).
-- **Domain 404s / redirects to tenant-not-found**: check both halves of
-  "Onboarding a new domain" above — a router in Traefik with no matching
-  `tenant_domains` row (or vice versa) is the usual cause.
-- **Edited `routers.yml.template` but nothing changed**: you likely edited
-  the wrong file — Traefik reads the rendered `routers.yml`, produced by
-  `entrypoint.sh` from the `.template` file **once, on container start**.
-  Either restart the `traefik` container, or edit `routers.yml` directly for
-  a one-off change you don't intend to keep (it gets overwritten on the next
-  restart from the template, so always fold real changes back into the
-  `.template` file).
+- **Traefik container exits immediately**: `docker compose logs traefik` —
+  `entrypoint.sh` prints which `.env` value is missing or invalid.
+- **Wildcard certificate not issuing** (`dns`): check the logs for lego
+  errors. Usually the API token lacks *DNS:Edit* on the zone, or the
+  provider needs different credential variables.
+- **Certificate not issuing** (`http` / custom domains): port `80` must be
+  reachable from the internet for that hostname, and its DNS must already
+  point at the server.
+- **A subdomain redirects to `/tenant-not-found`**: no active tenant has
+  that slug and no `tenant_domains` row matches the hostname. Check the
+  tenant's slug and `is_active` in the console, and that `BASE_DOMAIN` in
+  `infra/.env` is the domain being requested.
+- **404 from Traefik**: the host isn't routed — the bare base domain, a
+  name deeper than one label, or a custom domain missing from
+  `CUSTOM_DOMAINS`.

@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Re-run the full pipeline (tests -> publish -> deploy) for the current main.
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -27,8 +32,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - run: pip install -r requirements.txt
+          cache-dependency-path: backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt
       - name: Create app + test databases
         run: |
           mysql -h127.0.0.1 -uroot -e "CREATE DATABASE IF NOT EXISTS prabhu_platform;"
@@ -75,39 +80,123 @@ jobs:
           INTERNAL_API_URL: http://127.0.0.1:8000
         run: npm run build
 
-  build-images:
+  # Builds both images once and pushes them to GHCR, tagged with the commit
+  # SHA (immutable — what gets deployed and rolled back to) and `latest`.
+  publish-images:
     needs: [backend, frontend]
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # GHCR names must be lowercase; the owner may not be.
+          images: ghcr.io/${{ github.repository_owner }}/prabhu-platform-${{ matrix.service }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest
       - uses: docker/build-push-action@v6
         with:
-          context: backend
-          push: false
-          tags: prabhu-platform-backend:${{ github.sha }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: frontend
-          push: false
-          tags: prabhu-platform-frontend:${{ github.sha }}
+          context: ${{ matrix.service }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+  # Ships this commit's infra files (compose + Traefik) to the server, points
+  # it at the just-published images via IMAGE_TAG in the server's infra/.env,
+  # pulls, runs migrations and swaps containers. The server holds no git
+  # clone — only infra/ and its own .env, which CI never overwrites.
+  # Skipped until the DEPLOY_HOST repository variable is set.
   deploy:
-    needs: [build-images]
-    if: github.ref == 'refs/heads/main'
+    needs: [publish-images]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.DEPLOY_HOST != ''
     runs-on: ubuntu-latest
-    environment: production # requires manual approval — configure this environment's protection rules in repo settings
+    environment: production # add required reviewers in Settings → Environments to gate deploys
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: infra
+      # Uploaded to a staging dir first (wiped each time) so files deleted
+      # from the repo also disappear from the server.
+      - name: Upload infra files
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          port: ${{ vars.DEPLOY_PORT || 22 }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          source: infra/docker-compose.yml,infra/traefik
+          target: ${{ vars.DEPLOY_PATH || '/opt/prabhu-platform' }}/.release
+          rm: true
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          # Short-lived (expires with this job) — no long-lived registry
+          # credential ever needs to live on the server.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/prabhu-platform' }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          host: ${{ vars.DEPLOY_HOST }}
+          port: ${{ vars.DEPLOY_PORT || 22 }}
+          username: ${{ vars.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          envs: IMAGE_TAG,GHCR_TOKEN,GHCR_USER,DEPLOY_PATH
+          script_stop: true
           script: |
-            cd /opt/prabhu-platform
-            git pull
+            set -eu
+            cd "$DEPLOY_PATH"
+            test -f infra/.env || { echo "infra/.env missing on server — create it first"; exit 1; }
+
+            # Compose/Traefik config at exactly the commit being deployed.
+            cp .release/infra/docker-compose.yml infra/docker-compose.yml
+            rm -rf infra/traefik
+            cp -R .release/infra/traefik infra/traefik
+            chmod +x infra/traefik/entrypoint.sh
+
             cd infra
-            docker compose up -d --build
+
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            IMAGE_TAG="$IMAGE_TAG" docker compose pull --quiet
+            docker logout ghcr.io
+
+            # Pin the release in .env only once its images are on the box.
+            PREVIOUS=$(sed -n 's/^IMAGE_TAG=//p' .env)
+            if grep -q '^IMAGE_TAG=' .env; then
+              sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=$IMAGE_TAG/" .env
+            else
+              printf '\nIMAGE_TAG=%s\n' "$IMAGE_TAG" >> .env
+            fi
+            echo "$(date -u +%FT%TZ) $IMAGE_TAG (previous: ${PREVIOUS:-none})" >> .deploy-history
+
+            docker compose up -d --wait --no-build --remove-orphans
+            docker compose ps
+
+            # Old release images stay pullable from GHCR; keep a week locally.
+            docker image prune -af --filter "until=168h" >/dev/null

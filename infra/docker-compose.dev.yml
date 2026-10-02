@@ -1,23 +1,40 @@
-# Local-development convenience only — never used in production.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# Local testing of the full containerized stack — never used in production.
+# Builds the images from source instead of pulling them from GHCR.
+#
+#   cd infra && cp .env.example .env
+#   # in .env: BASE_DOMAIN=localhost  SUPER_ADMIN_DOMAIN=admin.localhost
+#   #          TLS_CHALLENGE=selfsigned  + any non-placeholder secrets
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Then https://<tenant-slug>.localhost (e.g. https://prabhusteels.localhost)
+# and https://admin.localhost — *.localhost resolves to 127.0.0.1 in
+# browsers and curl without any /etc/hosts edits. Accept the self-signed cert.
 
 services:
   mysql:
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
+    # Ports can't be published from an `internal: true` network alone.
+    networks: [internal, edge]
+
+  migrate:
+    build: ../backend
 
   backend:
+    build: ../backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
 
   frontend:
+    build: ../frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   adminer:
     image: adminer:latest
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+    networks: [internal, edge]
     depends_on:
       - mysql

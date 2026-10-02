@@ -36,6 +36,15 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Then visit with a tenant Host header, e.g. `curl -H "Host: prabhusteel.com" http://127.0.0.1:3000/`,
-or add the 7 real domains to `/etc/hosts` pointing at `127.0.0.1`. Full
-details in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+Then visit a tenant by subdomain — with `TENANT_BASE_DOMAIN=localhost` in
+`backend/.env`, `http://prabhusteels.localhost:3000` (`*.localhost` resolves
+to 127.0.0.1). Full details in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
+
+Production (Docker + Traefik, every tenant at `<slug>.BASE_DOMAIN`):
+
+```bash
+cd infra && cp .env.example .env   # fill in domains, TLS and secrets
+docker compose pull && docker compose up -d --wait   # images built by CI, pushed to GHCR
+```
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and [`docs/TRAEFIK.md`](docs/TRAEFIK.md).

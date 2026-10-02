@@ -1,0 +1,50 @@
+# Edge middlewares shared by every router that entrypoint.sh renders into
+# routers.yml (see docs/TRAEFIK.md's "Rate limiting & headers" section for
+# what each one does and how to tune it).
+#
+# This is edge-layer, application-layer-DDoS + OWASP-header hardening — it
+# complements, not replaces, an upstream network-layer proxy (docs/SECURITY.md)
+# for real volumetric attacks, and the backend's own per-route login
+# throttle (backend/app/core/rate_limit.py) for credential-stuffing.
+
+http:
+  middlewares:
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        customFrameOptionsValue: "DENY"
+        customResponseHeaders:
+          Permissions-Policy: "geolocation=(), camera=(), microphone=(), payment=()"
+        # CSP is set by Next.js itself (frontend/next.config.ts), not here —
+        # it needs to know the app's actual script/style/font sources, which
+        # Traefik has no visibility into.
+
+    # Per source IP. Traefik resolves the real client IP itself (trusting
+    # X-Forwarded-For only from the Cloudflare ranges in traefik.yml).
+    rate-limit:
+      rateLimit:
+        average: 50 # sustained requests/sec per source IP
+        burst: 100 # short bursts above the average before throttling kicks in
+
+    # Tighter edge budget for the Super Admin console — it's a pure login +
+    # CMS-admin surface, not public traffic, so there's no reason to allow
+    # the same burst as the tenant sites. The per-account login lockout
+    # itself lives in the backend (app/core/rate_limit.py), not here.
+    super-admin-rate-limit:
+      rateLimit:
+        average: 10
+        burst: 20
+
+    in-flight:
+      inFlightReq:
+        amount: 20 # concurrent open requests per source IP — slowloris-style mitigation
+
+    buffering:
+      buffering:
+        maxRequestBodyBytes: 27262976 # 26MB — just above the app's 25MB max_upload_bytes
+        memRequestBodyBytes: 2097152 # 2MB buffered in memory before spilling to disk
+

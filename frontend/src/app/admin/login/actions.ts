@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { clientIpHeaders } from "@/lib/api";
 import { clearSessionCookie, setSessionCookie } from "@/lib/session";
 
 export interface LoginState {
@@ -16,7 +17,7 @@ export async function adminLogin(_prevState: LoginState, formData: FormData): Pr
 
   const res = await fetch(`${BASE_URL}/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { ...(await clientIpHeaders()), "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
     cache: "no-store",
   });
