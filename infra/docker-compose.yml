@@ -70,9 +70,12 @@ services:
       # provider other than Cloudflare, add its variables here and in .env —
       # see https://doc.traefik.io/traefik/https/acme/#providers
       CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
+    # Defaults own the host's 80/443. Behind another reverse proxy on this
+    # host (TLS_CHALLENGE=external), bind to localhost instead, e.g.
+    # TRAEFIK_HTTP_BIND=127.0.0.1:8880 and TRAEFIK_HTTPS_BIND=127.0.0.1:8843.
     ports:
-      - "80:80"
-      - "443:443"
+      - "${TRAEFIK_HTTP_BIND:-80}:80"
+      - "${TRAEFIK_HTTPS_BIND:-443}:443"
     volumes:
       - ./traefik/entrypoint.sh:/usr/local/bin/prabhu-entrypoint.sh:ro
       - ./traefik/traefik.yml:/etc/traefik/src/traefik.yml:ro

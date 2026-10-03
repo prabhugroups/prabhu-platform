@@ -73,6 +73,7 @@ No Docker-socket / label-based discovery is used: Traefik never needs
 | `dns` (default) | One wildcard `BASE_DOMAIN` + `*.BASE_DOMAIN` cert via ACME DNS-01 | `ACME_DNS_PROVIDER` + that provider's API credentials (`CF_DNS_API_TOKEN` for Cloudflare) |
 | `http` | One cert per hostname via HTTP-01 (wildcards are impossible over HTTP-01) | Every tenant subdomain listed in `TENANT_SUBDOMAINS` |
 | `selfsigned` | Traefik's default self-signed cert | Nothing — local/staging testing only |
+| `external` | None in Traefik — the host's existing reverse proxy terminates TLS | That proxy forwarding our hosts to `TRAEFIK_HTTP_BIND` (next section) |
 
 `SUPER_ADMIN_DOMAIN` shares the wildcard cert when it's a direct subdomain
 of `BASE_DOMAIN`; it and `CUSTOM_DOMAINS` otherwise use HTTP-01. Both ACME
@@ -83,6 +84,66 @@ For a DNS provider other than Cloudflare, set `ACME_DNS_PROVIDER` to its
 [lego provider name](https://doc.traefik.io/traefik/https/acme/#providers)
 and add its credential variables to the `traefik` service's `environment`
 in `docker-compose.yml` and to `infra/.env`.
+
+## Behind an existing reverse proxy
+
+When the server already runs a reverse proxy on 80/443 for other sites
+(e.g. host nginx in front of mailcow and Nextcloud AIO), that proxy stays
+the front door and this stack sits behind it:
+
+```
+internet -> host nginx (TLS) --+-- mail.*, cloud.*, ...  -> other sites (unchanged)
+                               +-- *.BASE_DOMAIN         -> 127.0.0.1:8880 -> Traefik -> frontend/backend
+```
+
+Traefik keeps all tenant routing, rate limits, the `/super-admin` and
+`/media` rules; it just stops doing TLS and public ports. In `infra/.env`:
+
+```bash
+TLS_CHALLENGE=external
+TRAEFIK_HTTP_BIND=127.0.0.1:8880    # localhost only — never 0.0.0.0
+TRAEFIK_HTTPS_BIND=127.0.0.1:8843   # unused in this mode; just kept off the public ports
+```
+
+(`ACME_*` and `CF_DNS_API_TOKEN` are unused in this mode.) What changes in
+Traefik (`entrypoint.sh`):
+
+- One plain-HTTP entrypoint, no HTTPS redirect (nginx does that), no ACME.
+- It trusts `X-Forwarded-For` from private/loopback addresses only — safe
+  because the port is bound to 127.0.0.1, so only processes on this host
+  can reach it.
+- The rate-limit and in-flight middlewares key on the visitor address nginx
+  forwards, not on nginx's own address (otherwise every visitor would
+  share one budget).
+
+**nginx**: `infra/server/nginx-prabhu-platform.conf` is the server block.
+Replace `example.com` with `BASE_DOMAIN`, install it in
+`/etc/nginx/sites-available/` + symlink into `sites-enabled/`, then
+`nginx -t && systemctl reload nginx`. It sets (not appends) `X-Forwarded-For`
+so visitors can't spoof their IP. nginx prefers exact `server_name`s over
+the wildcard, so existing sites on the same base domain keep working — but
+don't give a tenant a slug that matches one of their names (`mail`, `cloud`).
+
+**Certificate** for `*.BASE_DOMAIN` (wildcards need a DNS challenge):
+
+- DNS on Cloudflare:
+  ```bash
+  apt install python3-certbot-dns-cloudflare
+  install -m 600 /dev/null /root/.secrets/cloudflare.ini   # (mkdir -p /root/.secrets first)
+  echo 'dns_cloudflare_api_token = <token with Zone:Read + DNS:Edit>' > /root/.secrets/cloudflare.ini
+  certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+    -d 'example.com' -d '*.example.com'
+  ```
+  Renewal is automatic (certbot's timer); add
+  `--deploy-hook "systemctl reload nginx"` so nginx picks renewals up.
+- Other DNS providers: use that provider's certbot DNS plugin, or skip the
+  wildcard and list the hosts explicitly
+  (`certbot certonly --nginx -d admin.example.com -d prabhusteels.example.com ...`,
+  re-run with `--expand` when adding a tenant) and point `ssl_certificate`
+  at that certificate.
+
+Tenant custom domains: copy the commented block at the end of the nginx
+file per domain and run `certbot --nginx -d <domain> -d www.<domain>`.
 
 ## Onboarding a tenant or domain
 

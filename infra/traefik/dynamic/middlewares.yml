@@ -29,6 +29,7 @@ http:
       rateLimit:
         average: 50 # sustained requests/sec per source IP
         burst: 100 # short bursts above the average before throttling kicks in
+        # @source-criterion@ (filled in by entrypoint.sh behind an external proxy)
 
     # Tighter edge budget for the Super Admin console — it's a pure login +
     # CMS-admin surface, not public traffic, so there's no reason to allow
@@ -38,10 +39,12 @@ http:
       rateLimit:
         average: 10
         burst: 20
+        # @source-criterion@ (filled in by entrypoint.sh behind an external proxy)
 
     in-flight:
       inFlightReq:
         amount: 20 # concurrent open requests per source IP — slowloris-style mitigation
+        # @source-criterion@ (filled in by entrypoint.sh behind an external proxy)
 
     buffering:
       buffering:

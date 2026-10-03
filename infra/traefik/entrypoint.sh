@@ -17,6 +17,11 @@
 #              with HTTP-01, so every tenant subdomain must be listed in
 #              TENANT_SUBDOMAINS.
 #   selfsigned Traefik's built-in default cert. Local/staging testing only.
+#   external   another reverse proxy on the host (e.g. nginx) owns 80/443 and
+#              terminates TLS; Traefik serves plain HTTP on :80 inside the
+#              container, published only on TRAEFIK_HTTP_BIND (a 127.0.0.1
+#              port), and trusts that proxy's X-Forwarded-For. See
+#              docs/TRAEFIK.md "Behind an existing reverse proxy".
 set -eu
 
 SRC=/etc/traefik/src
@@ -63,8 +68,8 @@ case "$TLS_CHALLENGE" in
     printf '%s' "${ACME_EMAIL:-}" | grep -Eq '^[^"\\ ]+@[^"\\ ]+$' \
       || die "ACME_EMAIL must be a valid email for TLS_CHALLENGE=$TLS_CHALLENGE"
     ;;
-  selfsigned) ;;
-  *) die "TLS_CHALLENGE must be dns, http or selfsigned (got '$TLS_CHALLENGE')" ;;
+  selfsigned | external) ;;
+  *) die "TLS_CHALLENGE must be dns, http, selfsigned or external (got '$TLS_CHALLENGE')" ;;
 esac
 if [ "$TLS_CHALLENGE" = dns ]; then
   printf '%s' "${ACME_DNS_PROVIDER:-}" | grep -Eq '^[a-z0-9.-]+$' \
@@ -83,6 +88,7 @@ case "$TLS_CHALLENGE" in
     ;;
   http) TENANT_TLS=$TLS_HTTP OTHER_TLS=$TLS_HTTP ;;
   selfsigned) TENANT_TLS='{}' OTHER_TLS='{}' ;;
+  external) TENANT_TLS='' OTHER_TLS='' ;; # TLS ends at the host's proxy
 esac
 # The admin console shares the wildcard cert when it's a direct subdomain.
 case "$SUPER_ADMIN_DOMAIN" in
@@ -90,6 +96,15 @@ case "$SUPER_ADMIN_DOMAIN" in
   *.$BASE_DOMAIN) ADMIN_TLS=$TENANT_TLS ;;
   *) ADMIN_TLS=$OTHER_TLS ;;
 esac
+
+# Plain HTTP on `web` behind an external proxy; TLS routers on `websecure`
+# otherwise. tls_line prints a router's `tls:` line, or nothing.
+if [ "$TLS_CHALLENGE" = external ]; then ENTRY=web; else ENTRY=websecure; fi
+tls_line() { [ "$TLS_CHALLENGE" = external ] || printf '      tls: %s' "$1"; }
+# Private ranges a host-local proxy reaches Traefik from (loopback, docker
+# bridge gateways). Only trusted in external mode, where the port is bound to
+# 127.0.0.1 — so nothing outside this host can present these addresses.
+PRIVATE_NETS='["127.0.0.1/32", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"]'
 
 # ---- Tenant host matcher ----
 if [ "$TLS_CHALLENGE" = http ]; then
@@ -104,8 +119,23 @@ fi
 
 # ---- Static config ----
 {
-  cat "$SRC/traefik.yml"
-  if [ "$TLS_CHALLENGE" != selfsigned ]; then
+  if [ "$TLS_CHALLENGE" = external ]; then
+    # Replace the base file's public :80/:443 entrypoints (HTTPS redirect,
+    # Cloudflare-only trust) with one plain-HTTP entrypoint that trusts the
+    # host proxy's forwarded headers.
+    awk '/^entryPoints:/{skip=1; next} skip && /^[^ #]/{skip=0} !skip' "$SRC/traefik.yml"
+    cat <<EOF
+
+entryPoints:
+  web:
+    address: ":80"
+    forwardedHeaders:
+      trustedIPs: $PRIVATE_NETS
+EOF
+  else
+    cat "$SRC/traefik.yml"
+  fi
+  if [ "$TLS_CHALLENGE" != selfsigned ] && [ "$TLS_CHALLENGE" != external ]; then
     cat <<EOF
 
 certificatesResolvers:
@@ -136,6 +166,11 @@ EOF
 mkdir -p "$DYNAMIC"
 rm -f "$DYNAMIC"/*.yml
 cp "$SRC"/dynamic/*.yml "$DYNAMIC"/
+if [ "$TLS_CHALLENGE" = external ]; then
+  # Every request now arrives from the proxy's one IP: per-visitor limits
+  # must key on the X-Forwarded-For it sets, skipping private hops.
+  sed -i "s|^\( *\)# @source-criterion@.*|\1sourceCriterion:\n\1  ipStrategy:\n\1    excludedIPs: $PRIVATE_NETS|" "$DYNAMIC/middlewares.yml"
+fi
 
 PUBLIC_MW='[security-headers, rate-limit, in-flight, buffering]'
 {
@@ -148,38 +183,38 @@ http:
     # own host: /super-admin never reaches the frontend from a tenant host.
     tenants:
       rule: '($TENANT_HOSTS) && !PathPrefix(\`/super-admin\`)'
-      entryPoints: [websecure]
+      entryPoints: [$ENTRY]
       service: frontend
       middlewares: $PUBLIC_MW
-      tls: $TENANT_TLS
+$(tls_line "$TENANT_TLS")
       priority: 100
 
     super-admin:
       rule: 'Host(\`$SUPER_ADMIN_DOMAIN\`)'
-      entryPoints: [websecure]
+      entryPoints: [$ENTRY]
       service: frontend
       middlewares: [admin-root-redirect, security-headers, super-admin-rate-limit, in-flight, buffering]
-      tls: $ADMIN_TLS
+$(tls_line "$ADMIN_TLS")
       priority: 500
 
     # /super-admin on any other host (e.g. a super admin who signed in on a
     # tenant subdomain) is sent to the console's own host instead.
     super-admin-elsewhere:
       rule: 'PathPrefix(\`/super-admin\`)'
-      entryPoints: [websecure]
+      entryPoints: [$ENTRY]
       service: noop@internal
       middlewares: [to-super-admin-domain]
-      tls: {}
+$(tls_line '{}')
       priority: 200
 
     # Uploaded media for every host, straight from FastAPI's StaticFiles
     # mount — the only public path to the backend.
     media:
       rule: 'PathPrefix(\`/media/\`)'
-      entryPoints: [websecure]
+      entryPoints: [$ENTRY]
       service: backend
       middlewares: $PUBLIC_MW
-      tls: {}
+$(tls_line '{}')
       priority: 1000
 EOF
   if [ -n "$CUSTOM_DOMAINS" ]; then
@@ -188,10 +223,10 @@ EOF
 
     custom-domains:
       rule: '($(host_rule $CUSTOM_DOMAINS)) && !PathPrefix(\`/super-admin\`)'
-      entryPoints: [websecure]
+      entryPoints: [$ENTRY]
       service: frontend
       middlewares: $PUBLIC_MW
-      tls: $OTHER_TLS
+$(tls_line "$OTHER_TLS")
       priority: 300
 EOF
   fi
@@ -201,8 +236,10 @@ EOF
     # Bare https://$SUPER_ADMIN_DOMAIN/ lands on the console, not a tenant page.
     admin-root-redirect:
       redirectRegex:
-        regex: '^(https?://[^/]+)/?\$'
-        replacement: '\${1}/super-admin'
+        regex: '^https?://[^/]+/?\$'
+        # Absolute https URL: behind an external proxy Traefik itself only
+        # sees plain HTTP, so a scheme-relative rewrite would downgrade it.
+        replacement: 'https://$SUPER_ADMIN_DOMAIN/super-admin'
 
     to-super-admin-domain:
       redirectRegex:

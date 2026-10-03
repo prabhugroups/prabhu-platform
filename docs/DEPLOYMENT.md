@@ -50,7 +50,8 @@ is missing, Traefik refuses an invalid hostname, and the API refuses the
 | `BASE_DOMAIN` | Tenants are served at `<slug>.BASE_DOMAIN`. |
 | `SUPER_ADMIN_DOMAIN` | Operator console host, e.g. `admin.example.com`. `/super-admin` is only routed here. |
 | `CUSTOM_DOMAINS` | Optional comma-separated extra hostnames (a tenant's own domain). Each also needs a `tenant_domains` row. |
-| `TLS_CHALLENGE` | `dns` (one wildcard cert, recommended), `http` (per-host certs; requires `TENANT_SUBDOMAINS`), or `selfsigned` (testing only). |
+| `TLS_CHALLENGE` | `dns` (one wildcard cert, recommended), `http` (per-host certs; requires `TENANT_SUBDOMAINS`), `external` (a reverse proxy already on the server owns 80/443 — see `docs/TRAEFIK.md`, "Behind an existing reverse proxy"), or `selfsigned` (testing only). |
+| `TRAEFIK_HTTP_BIND` / `TRAEFIK_HTTPS_BIND` | Host ports Traefik publishes: `80`/`443` by default; `127.0.0.1:8880`/`127.0.0.1:8843` with `TLS_CHALLENGE=external`. |
 | `ACME_EMAIL` | Real address — Let's Encrypt sends expiry/problem notices here. |
 | `ACME_DNS_PROVIDER` / `CF_DNS_API_TOKEN` | DNS-01 provider + credentials (for `TLS_CHALLENGE=dns`). |
 | `TENANT_SUBDOMAINS` | Only for `TLS_CHALLENGE=http`: every tenant subdomain to issue a cert for. |

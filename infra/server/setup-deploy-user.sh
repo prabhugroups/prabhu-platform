@@ -114,7 +114,8 @@ if [ -n "$LISTENERS" ]; then
   echo
   echo "NOTE: ports 80/443 are already in use on this host:"
   printf '%s\n' "$LISTENERS" | awk '{print "  " $4 "  " $6}'
-  echo "This stack's Traefik needs to be the only thing on 80/443, or run behind the existing proxy."
+  echo "Keep that proxy and run this stack behind it: TLS_CHALLENGE=external in infra/.env"
+  echo "plus infra/server/nginx-prabhu-platform.conf (docs/TRAEFIK.md, \"Behind an existing reverse proxy\")."
 fi
 
 ENV_FILE="$DEPLOY_PATH/infra/.env"
