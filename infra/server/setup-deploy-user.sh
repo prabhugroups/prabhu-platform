@@ -105,8 +105,17 @@ check "deploy user can run docker"        "su -s /bin/sh $DEPLOY_USER -c 'docker
 check "authorized_keys is 600 and owned"  "[ \"\$(stat -c '%U %a' $AUTH)\" = '$DEPLOY_USER 600' ]"
 check ".ssh is 700"                       "[ \"\$(stat -c '%a' $SSH_DIR)\" = 700 ]"
 check "deploy dir writable by deploy"     "su -s /bin/sh $DEPLOY_USER -c 'test -w $DEPLOY_PATH/infra'"
-check "nothing else listening on 80/443"  "! ss -ltnpH '( sport = :80 or sport = :443 )' | grep -v docker-proxy | grep -q ."
-[ "$fail" -eq 0 ] || echo "Fix the FAIL lines above (a web server on 80/443 must be stopped: Traefik needs both ports)."
+[ "$fail" -eq 0 ] || echo "Fix the FAIL lines above, then re-run."
+
+# Not a failure: on a shared host another reverse proxy may own 80/443, and
+# then this stack must sit behind it instead (docs/TRAEFIK.md).
+LISTENERS=$(ss -ltnpH '( sport = :80 or sport = :443 )' 2>/dev/null || true)
+if [ -n "$LISTENERS" ]; then
+  echo
+  echo "NOTE: ports 80/443 are already in use on this host:"
+  printf '%s\n' "$LISTENERS" | awk '{print "  " $4 "  " $6}'
+  echo "This stack's Traefik needs to be the only thing on 80/443, or run behind the existing proxy."
+fi
 
 ENV_FILE="$DEPLOY_PATH/infra/.env"
 echo

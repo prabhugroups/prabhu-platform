@@ -62,7 +62,7 @@ is missing, Traefik refuses an invalid hostname, and the API refuses the
 Tip: set `ACME_CA_SERVER` to Let's Encrypt staging for the first run so a
 DNS/token mistake can't burn production rate limits; once certificates
 issue, remove it and reset the staging certs:
-`docker compose rm -sf traefik && docker volume rm infra_traefik_acme && docker compose up -d`.
+`docker compose rm -sf traefik && docker volume rm prabhu-platform_traefik_acme && docker compose up -d`.
 
 Then pull the images CI published to GHCR and start everything (the first
 time, before CI has deployed, `IMAGE_TAG=latest` is fine):

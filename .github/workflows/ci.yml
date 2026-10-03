@@ -232,4 +232,6 @@ jobs:
             docker compose ps
 
             # Old release images stay pullable from GHCR; keep a week locally.
-            docker image prune -af --filter "until=168h" >/dev/null
+            # Label-scoped: never touches other stacks' images on a shared host.
+            docker image prune -af --filter "until=168h" \
+              --filter "label=org.opencontainers.image.source=https://github.com/${{ github.repository }}" >/dev/null

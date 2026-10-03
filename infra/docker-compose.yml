@@ -14,6 +14,12 @@
 # ${VAR:?...} below; Traefik's routing/TLS is rendered from the same values
 # by traefik/entrypoint.sh.
 
+# Fixed project name: container/volume/network names and `--remove-orphans`
+# are scoped by it. Without it, Compose would use the directory name
+# ("infra") and could collide with — and remove — another stack on the same
+# host that also lives in a directory called infra/.
+name: prabhu-platform
+
 x-logging: &logging
   driver: json-file
   options:
