@@ -117,9 +117,11 @@ Traefik (`entrypoint.sh`):
   share one budget).
 
 **nginx**: `infra/server/nginx-prabhu-platform.conf` is the server block.
-Replace `example.com` with `BASE_DOMAIN`, install it in
-`/etc/nginx/sites-available/` + symlink into `sites-enabled/`, then
-`nginx -t && systemctl reload nginx`. It sets (not appends) `X-Forwarded-For`
+Replace `example.com` with `BASE_DOMAIN`, copy
+`infra/server/nginx-cloudflare-realip.conf` to
+`/etc/nginx/snippets/cloudflare-realip.conf` (the server block includes it),
+install the server block in `/etc/nginx/sites-available/` + symlink into
+`sites-enabled/`, then `nginx -t && systemctl reload nginx`. It sets (not appends) `X-Forwarded-For`
 so visitors can't spoof their IP. nginx prefers exact `server_name`s over
 the wildcard, so existing sites on the same base domain keep working — but
 don't give a tenant a slug that matches one of their names (`mail`, `cloud`).
@@ -141,6 +143,18 @@ don't give a tenant a slug that matches one of their names (`mail`, `cloud`).
   (`certbot certonly --nginx -d admin.example.com -d prabhusteels.example.com ...`,
   re-run with `--expand` when adding a tenant) and point `ssl_certificate`
   at that certificate.
+
+**Cloudflare-proxied DNS (orange cloud)** — settings that must match:
+
+- Records: the apex and `*` (wildcard) A records → the server IP, proxied.
+  The free Universal SSL certificate covers `BASE_DOMAIN` and
+  `*.BASE_DOMAIN`, so tenant subdomains and `admin.` are one level deep only.
+- SSL/TLS → Overview → encryption mode **Full (strict)**. *Flexible* makes
+  Cloudflare talk HTTP to nginx, which redirects to HTTPS — an endless
+  redirect loop.
+- Visitor IPs: `cloudflare-realip.conf` makes nginx use `CF-Connecting-IP`,
+  only for connections from Cloudflare's ranges. Without it every visitor
+  behind one Cloudflare edge shares a rate-limit and login-lockout budget.
 
 Tenant custom domains: copy the commented block at the end of the nginx
 file per domain and run `certbot --nginx -d <domain> -d www.<domain>`.
