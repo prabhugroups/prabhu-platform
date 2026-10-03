@@ -174,25 +174,39 @@ permissions doesn't cap `GITHUB_TOKEN` below what the jobs ask for.
 
 ### Adding a company (repeat per company)
 
-**1. Server.** Install Docker Engine + Compose v2 and create a deploy user:
-
-```bash
-sudo adduser --disabled-password --gecos "" deploy
-sudo usermod -aG docker deploy
-sudo mkdir -p /opt/prabhu-platform/infra && sudo chown -R deploy: /opt/prabhu-platform
-```
-
-Create `/opt/prabhu-platform/infra/.env` as that user (section 2) with the
-company's domains, TLS settings, fresh secrets and `SEED_TENANTS` (a preset
-name, or empty to create tenants in the console), then `chmod 600` it.
-
-**2. CI key.** On your own machine, a keypair used only by CI for this server:
+**1. CI key.** On your own machine, a keypair used only by CI for this
+company's server:
 
 ```bash
 ssh-keygen -t ed25519 -C "ci-deploy-<company>" -f deploy_<company> -N ""
-ssh-copy-id -i deploy_<company>.pub deploy@<server-ip>
-ssh-keyscan -t ed25519 <server-ip> | ssh-keygen -lf - | awk '{print $2}'   # fingerprint
 ```
+
+The private half (`deploy_<company>`) goes into GitHub (step 3); the
+public half (`deploy_<company>.pub`) goes onto the server (step 2).
+
+**2. Server.** Copy `infra/server/setup-deploy-user.sh` to the server and
+run it as root with the public key:
+
+```bash
+scp infra/server/setup-deploy-user.sh deploy_<company>.pub root@<server-ip>:/root/
+ssh root@<server-ip> 'bash /root/setup-deploy-user.sh "$(cat /root/deploy_<company>.pub)"'
+```
+
+It is idempotent (safe to re-run) and installs Docker if missing, creates
+the `deploy` user (key-only login, no password, no sudo, in the `docker`
+group), authorizes the key with forwarding disabled, creates
+`/opt/prabhu-platform/infra` owned by `deploy`, opens 80/443 if `ufw` is
+active, runs checks, and prints the host-key fingerprint for step 3. It
+never edits `sshd_config` or creates secrets. Then create the company's
+`.env` as that user (section 2) and lock it down:
+
+```bash
+sudo -u deploy nano /opt/prabhu-platform/infra/.env
+sudo chmod 600 /opt/prabhu-platform/infra/.env
+```
+
+Check from your machine that the key works:
+`ssh -i deploy_<company> deploy@<server-ip> 'docker ps && ls -la /opt/prabhu-platform/infra'`.
 
 **3. GitHub Environment.** Settings → Environments → New environment, named
 after the company (lowercase, e.g. `prabhu`). Optionally add required
@@ -205,7 +219,7 @@ reviewers / restrict to the `main` branch. Then, in that environment:
 | Variable | `DEPLOY_PORT` | Optional, default `22` |
 | Variable | `DEPLOY_PATH` | Optional, default `/opt/prabhu-platform` |
 | Secret | `DEPLOY_SSH_KEY` | Contents of the private key `deploy_<company>` |
-| Secret | `DEPLOY_SSH_FINGERPRINT` | The `SHA256:...` fingerprint from step 2 |
+| Secret | `DEPLOY_SSH_FINGERPRINT` | The `SHA256:...` fingerprint printed at the end of step 2 |
 
 **4. Go live.** Add the environment's name to `DEPLOY_TARGETS`, then
 *Actions → CI → Run workflow* with `target` = the company. The first deploy
