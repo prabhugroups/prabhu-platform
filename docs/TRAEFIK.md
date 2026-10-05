@@ -180,6 +180,12 @@ first label (e.g. `admin`) — the console router wins over the tenant one.
 `/super-admin/*`, so the console host never hits `/tenant-not-found`.
 Tenant admins sign in on their own tenant host (`/admin/login`).
 
+The console can also live on the bare domain: `SUPER_ADMIN_DOMAIN` equal to
+`BASE_DOMAIN` (e.g. both `example.com`). It shares the wildcard cert, and
+`admin.example.com` then redirects to it (so `admin` can't be a tenant
+slug). Behind a host proxy, the bare domain must be forwarded to the stack
+too — `infra/server/nginx-prabhu-platform.conf` already lists it.
+
 ## Rate limiting & headers
 
 Every public router chains four middlewares, defined once in

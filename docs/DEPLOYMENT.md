@@ -48,7 +48,7 @@ is missing, Traefik refuses an invalid hostname, and the API refuses the
 | Variable | What it is |
 |---|---|
 | `BASE_DOMAIN` | Tenants are served at `<slug>.BASE_DOMAIN`. |
-| `SUPER_ADMIN_DOMAIN` | Operator console host, e.g. `admin.example.com`. `/super-admin` is only routed here. |
+| `SUPER_ADMIN_DOMAIN` | Operator console host, e.g. `admin.example.com`, or `BASE_DOMAIN` itself to serve the console on the bare domain. `/super-admin` is only routed here. |
 | `CUSTOM_DOMAINS` | Optional comma-separated extra hostnames (a tenant's own domain). Each also needs a `tenant_domains` row. |
 | `TLS_CHALLENGE` | `dns` (one wildcard cert, recommended), `http` (per-host certs; requires `TENANT_SUBDOMAINS`), `external` (a reverse proxy already on the server owns 80/443 — see `docs/TRAEFIK.md`, "Behind an existing reverse proxy"), or `selfsigned` (testing only). |
 | `TRAEFIK_HTTP_BIND` / `TRAEFIK_HTTPS_BIND` | Host ports Traefik publishes: `80`/`443` by default; `127.0.0.1:8880`/`127.0.0.1:8843` with `TLS_CHALLENGE=external`. |

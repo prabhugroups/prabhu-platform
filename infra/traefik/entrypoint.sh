@@ -90,8 +90,10 @@ case "$TLS_CHALLENGE" in
   selfsigned) TENANT_TLS='{}' OTHER_TLS='{}' ;;
   external) TENANT_TLS='' OTHER_TLS='' ;; # TLS ends at the host's proxy
 esac
-# The admin console shares the wildcard cert when it's a direct subdomain.
+# The admin console shares the wildcard cert (main: $BASE_DOMAIN, SAN:
+# *.$BASE_DOMAIN) when it's the bare domain itself or a direct subdomain.
 case "$SUPER_ADMIN_DOMAIN" in
+  "$BASE_DOMAIN") ADMIN_TLS=$TENANT_TLS ;;
   *.*.$BASE_DOMAIN) ADMIN_TLS=$OTHER_TLS ;;
   *.$BASE_DOMAIN) ADMIN_TLS=$TENANT_TLS ;;
   *) ADMIN_TLS=$OTHER_TLS ;;
@@ -217,6 +219,20 @@ $(tls_line '{}')
 $(tls_line '{}')
       priority: 1000
 EOF
+  if [ "$SUPER_ADMIN_DOMAIN" = "$BASE_DOMAIN" ]; then
+    # Console on the bare domain: admin.$BASE_DOMAIN would otherwise match
+    # the tenant rule and show "tenant not found" — send it to the console.
+    cat <<EOF
+
+    admin-subdomain:
+      rule: 'Host(\`admin.$BASE_DOMAIN\`)'
+      entryPoints: [$ENTRY]
+      service: noop@internal
+      middlewares: [to-super-admin-domain]
+$(tls_line "$TENANT_TLS")
+      priority: 600
+EOF
+  fi
   if [ -n "$CUSTOM_DOMAINS" ]; then
     # shellcheck disable=SC2086 # intentional word splitting
     cat <<EOF
