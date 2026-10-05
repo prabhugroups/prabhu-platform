@@ -128,9 +128,16 @@ else
   echo "  sudo -u $DEPLOY_USER nano $ENV_FILE && sudo chmod 600 $ENV_FILE"
 fi
 echo "Then add this server's host-key fingerprint to the GitHub environment as DEPLOY_SSH_FINGERPRINT:"
-HOST_KEY=/etc/ssh/ssh_host_ed25519_key.pub
-if [ -f "$HOST_KEY" ]; then
-  echo "  $(ssh-keygen -lf "$HOST_KEY" | awk '{print $2}')"
+# The CI actions (appleboy/*, Go's x/crypto/ssh) negotiate the first host-key
+# type in this order that the server has — ECDSA before RSA before ED25519 —
+# and compare the fingerprint against that key only. Printing a different
+# type's fingerprint fails every deploy with "host key fingerprint mismatch".
+HOST_KEY=""
+for t in ecdsa rsa ed25519; do
+  if [ -f "/etc/ssh/ssh_host_${t}_key.pub" ]; then HOST_KEY="/etc/ssh/ssh_host_${t}_key.pub"; break; fi
+done
+if [ -n "$HOST_KEY" ]; then
+  echo "  $(ssh-keygen -lf "$HOST_KEY" | awk '{print $2}')   ($(basename "$HOST_KEY"))"
 else
-  echo "  (no ed25519 host key found — run: ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub)"
+  echo "  (no host key found in /etc/ssh — run: ssh-keygen -lf /etc/ssh/ssh_host_<type>_key.pub)"
 fi

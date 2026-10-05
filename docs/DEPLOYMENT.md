@@ -220,7 +220,13 @@ reviewers / restrict to the `main` branch. Then, in that environment:
 | Variable | `DEPLOY_PORT` | Optional, default `22` |
 | Variable | `DEPLOY_PATH` | Optional, default `/opt/prabhu-platform` |
 | Secret | `DEPLOY_SSH_KEY` | Contents of the private key `deploy_<company>` |
-| Secret | `DEPLOY_SSH_FINGERPRINT` | The `SHA256:...` fingerprint printed at the end of step 2 |
+| Secret | `DEPLOY_SSH_FINGERPRINT` | The `SHA256:...` fingerprint printed at the end of step 2 (see note below) |
+
+The fingerprint must be of the host key the CI SSH client negotiates, which
+prefers **ECDSA** over RSA over ED25519 — not necessarily the key `ssh`
+shows you. The setup script prints the right one; to check from anywhere:
+`ssh-keyscan -t ecdsa <server-ip> | ssh-keygen -lf -`. The wrong key type
+fails the deploy with `ssh: host key fingerprint mismatch`.
 
 **4. Go live.** Add the environment's name to `DEPLOY_TARGETS`, then
 *Actions → CI → Run workflow* with `target` = the company. The first deploy
