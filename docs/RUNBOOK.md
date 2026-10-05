@@ -137,6 +137,7 @@ of your local database plus `backend/uploads`), from the repo root:
 
 ```bash
 infra/server/push-local-data.sh root@<server-ip>
+infra/server/push-local-data.sh -i ~/.ssh/<key> root@<server-ip>   # with a specific SSH key
 ```
 
 It **replaces** all data on the server, so admin logins become your local

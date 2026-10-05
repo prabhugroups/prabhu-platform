@@ -3,7 +3,7 @@
 # server, REPLACING the data there. For seeding a demo/staging server from
 # the content you entered locally — not a routine deploy step.
 #
-#   infra/server/push-local-data.sh root@<server-ip>
+#   infra/server/push-local-data.sh [-i ~/.ssh/<key>] root@<server-ip>
 #
 # Reads the local DB credentials from backend/.env (DB_HOST, DB_PORT,
 # DB_NAME, DB_USER, DB_PASSWORD) and media from its UPLOADS_DIR. The SSH
@@ -15,7 +15,17 @@
 #      ASSUME_YES=1 to skip the confirmation prompt.
 set -euo pipefail
 
-TARGET="${1:?usage: push-local-data.sh <user@server>}"
+USAGE="usage: push-local-data.sh [-i <ssh-key>] <user@server>"
+SSH_OPTS=()
+while getopts "i:" opt; do
+  case "$opt" in
+    i) [ -r "$OPTARG" ] || { echo "ERROR: can't read SSH key $OPTARG" >&2; exit 1; }
+       SSH_OPTS+=(-i "$OPTARG" -o IdentitiesOnly=yes) ;;
+    *) echo "$USAGE" >&2; exit 1 ;;
+  esac
+done
+shift $((OPTIND - 1))
+TARGET="${1:?$USAGE}"
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BACKEND_ENV="${BACKEND_ENV:-$REPO_ROOT/backend/.env}"
 DEPLOY_PATH="${DEPLOY_PATH:-/opt/prabhu-platform}"
@@ -35,7 +45,7 @@ local_sql() { mysql -h"${DB_HOST:-127.0.0.1}" -P"${DB_PORT:-3306}" -u"$DB_USER" 
 
 step "Checking schema revisions"
 LOCAL_REV=$(local_sql "select version_num from alembic_version") || die "can't query local database $DB_NAME"
-REMOTE_REV=$(ssh "$TARGET" "cd '$DEPLOY_PATH/infra' && docker compose exec -T mysql sh -c 'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" exec mysql -uroot -N \"\$MYSQL_DATABASE\" -e \"select version_num from alembic_version\"'") \
+REMOTE_REV=$(ssh "${SSH_OPTS[@]}" "$TARGET" "cd '$DEPLOY_PATH/infra' && docker compose exec -T mysql sh -c 'MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" exec mysql -uroot -N \"\$MYSQL_DATABASE\" -e \"select version_num from alembic_version\"'") \
   || die "can't read the server's schema revision (is the stack deployed at $DEPLOY_PATH?)"
 echo "local $LOCAL_REV / server $REMOTE_REV"
 [ "$LOCAL_REV" = "$REMOTE_REV" ] || die "schema revisions differ — run 'alembic upgrade head' locally and/or deploy the latest main first"
@@ -69,8 +79,8 @@ if [ "${ASSUME_YES:-}" != 1 ]; then
 fi
 
 step "Uploading"
-REMOTE_TMP=$(ssh "$TARGET" mktemp -d)
-scp -q "$WORK/data.sql.gz" "$WORK/uploads.tar.gz" "$REPO_ROOT/infra/server/import-data.sh" "$TARGET:$REMOTE_TMP/"
+REMOTE_TMP=$(ssh "${SSH_OPTS[@]}" "$TARGET" mktemp -d)
+scp -q "${SSH_OPTS[@]}" "$WORK/data.sql.gz" "$WORK/uploads.tar.gz" "$REPO_ROOT/infra/server/import-data.sh" "$TARGET:$REMOTE_TMP/"
 
 step "Importing on $TARGET"
-ssh "$TARGET" "DEPLOY_PATH='$DEPLOY_PATH' bash '$REMOTE_TMP/import-data.sh' '$REMOTE_TMP/data.sql.gz' '$REMOTE_TMP/uploads.tar.gz'; status=\$?; rm -rf -- '$REMOTE_TMP'; exit \$status"
+ssh "${SSH_OPTS[@]}" "$TARGET" "DEPLOY_PATH='$DEPLOY_PATH' bash '$REMOTE_TMP/import-data.sh' '$REMOTE_TMP/data.sql.gz' '$REMOTE_TMP/uploads.tar.gz'; status=\$?; rm -rf -- '$REMOTE_TMP'; exit \$status"
