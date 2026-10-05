@@ -16,7 +16,7 @@
     "clsx": "^2.1.1",
     "cn": "^0.3.0",
     "file-saver": "^2.0.5",
-    "framer-motion": "^13.3.0",
+    "framer-motion": "^13.4.0",
     "jszip": "^3.10.2",
     "lucide-react": "^1.46.0",
     "nepali-datetime": "^1.6.0",
