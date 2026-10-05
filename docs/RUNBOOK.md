@@ -130,6 +130,22 @@ immediately.
 See `migration/README.md` for the full procedure — this only needs to run
 once per tenant, at that tenant's cutover.
 
+## Copying local data to a server
+
+To give a demo/staging server the content you entered locally (every row
+of your local database plus `backend/uploads`), from the repo root:
+
+```bash
+infra/server/push-local-data.sh root@<server-ip>
+```
+
+It **replaces** all data on the server, so admin logins become your local
+ones. It refuses to run unless local and server are at the same Alembic
+revision, asks for confirmation, and backs up the server's database to
+`/opt/prabhu-platform/backups/` first; the end of its output prints the
+command that restores that backup. The API and frontend are down for the
+import (about a minute). Uploaded files are replaced without a backup.
+
 ## Common operational tasks
 
 - **Rotate the JWT secret**: update `JWT_SECRET` in `infra/.env`, redeploy
