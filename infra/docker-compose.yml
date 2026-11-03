@@ -70,6 +70,9 @@ services:
       # provider other than Cloudflare, add its variables here and in .env —
       # see https://doc.traefik.io/traefik/https/acme/#providers
       CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
+      # Other stacks on this server served through this Traefik, e.g.
+      # shms.example.com=http://shms-gateway:80 (see .env.example).
+      EXTRA_ROUTES: ${EXTRA_ROUTES:-}
     # Defaults own the host's 80/443. Behind another reverse proxy on this
     # host (TLS_CHALLENGE=external), bind to localhost instead, e.g.
     # TRAEFIK_HTTP_BIND=127.0.0.1:8880 and TRAEFIK_HTTPS_BIND=127.0.0.1:8843.
@@ -85,7 +88,7 @@ services:
       # host, can read the access log at a real filesystem path — see
       # docs/SECURITY.md.
       - ./traefik-logs:/var/log/traefik
-    networks: [edge]
+    networks: [edge, ingress]
     healthcheck:
       test: ["CMD", "traefik", "healthcheck", "--configFile=/etc/traefik/traefik.yml"]
       interval: 15s
@@ -186,6 +189,11 @@ networks:
   # backend <-> MySQL. `internal` = no route to or from the outside world.
   internal:
     internal: true
+  # Shared with other stacks on this server (e.g. SHMS) whose gateway joins
+  # it as an external network so Traefik can reach it (EXTRA_ROUTES). Fixed
+  # name so they can find it; only Traefik of this stack is attached.
+  ingress:
+    name: prabhu-ingress
 
 volumes:
   mysql_data:

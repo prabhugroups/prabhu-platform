@@ -9,6 +9,9 @@
 #   $SUPER_ADMIN_DOMAIN   -> frontend; operator console, tighter rate limit
 #   $CUSTOM_DOMAINS       -> frontend; each also needs a tenant_domains row
 #   <any host>/media/*    -> backend (FastAPI static files)
+#   $EXTRA_ROUTES hosts  -> another stack on this server (e.g. SHMS), whole
+#                           host forwarded as-is to its gateway container on
+#                           the shared `prabhu-ingress` docker network
 #
 # TLS_CHALLENGE picks how certificates are issued:
 #   dns        one wildcard cert for *.$BASE_DOMAIN via DNS-01 (needs DNS
@@ -62,6 +65,21 @@ check_host "$BASE_DOMAIN" BASE_DOMAIN
 check_host "$SUPER_ADMIN_DOMAIN" SUPER_ADMIN_DOMAIN
 for h in $CUSTOM_DOMAINS; do check_host "$h" CUSTOM_DOMAINS; done
 for s in $TENANT_SUBDOMAINS; do check_label "$s" TENANT_SUBDOMAINS; done
+
+# EXTRA_ROUTES: "host=http://service:port" pairs, comma-separated, e.g.
+#   EXTRA_ROUTES=shms.example.com=http://shms-gateway:80
+# Each host is handed in full to that upstream (reached over the external
+# prabhu-ingress network) — none of the tenant routing or middlewares apply.
+EXTRA_ROUTES=$(split_list "${EXTRA_ROUTES:-}")
+for r in $EXTRA_ROUTES; do
+  h=${r%%=*}
+  u=${r#*=}
+  [ "$h" != "$r" ] || die "EXTRA_ROUTES entry '$r' must be host=http://service:port"
+  check_host "$h" EXTRA_ROUTES
+  [ "$h" != "$SUPER_ADMIN_DOMAIN" ] || die "EXTRA_ROUTES host '$h' is the SUPER_ADMIN_DOMAIN"
+  printf '%s' "$u" | grep -Eq "^http://$LABEL(\.$LABEL)*(:[0-9]{1,5})?\$" \
+    || die "EXTRA_ROUTES upstream '$u' must look like http://service:port"
+done
 
 case "$TLS_CHALLENGE" in
   dns | http)
@@ -246,6 +264,30 @@ $(tls_line "$OTHER_TLS")
       priority: 300
 EOF
   fi
+  # Other stacks on this server. Priority 2000 beats every rule above —
+  # including the any-host /media/ and /super-admin rules and the tenant
+  # wildcard (which would otherwise claim <x>.$BASE_DOMAIN). No middlewares:
+  # the other stack's own gateway sets its headers and body limits.
+  i=0
+  for r in $EXTRA_ROUTES; do
+    i=$((i + 1))
+    h=${r%%=*}
+    # A direct subdomain of BASE_DOMAIN shares the tenant (wildcard) cert.
+    case "$h" in
+      *.*."$BASE_DOMAIN") tls=$OTHER_TLS ;;
+      *."$BASE_DOMAIN") tls=$TENANT_TLS ;;
+      *) tls=$OTHER_TLS ;;
+    esac
+    cat <<EOF
+
+    extra-$i:
+      rule: 'Host(\`$h\`)'
+      entryPoints: [$ENTRY]
+      service: extra-$i
+$(tls_line "$tls")
+      priority: 2000
+EOF
+  done
   cat <<EOF
 
   middlewares:
@@ -273,7 +315,19 @@ EOF
         servers:
           - url: "http://backend:8000"
 EOF
+  i=0
+  for r in $EXTRA_ROUTES; do
+    i=$((i + 1))
+    cat <<EOF
+
+    extra-$i:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "${r#*=}"
+EOF
+  done
 } > "$DYNAMIC/routers.yml"
 
-echo "traefik-entrypoint: TLS_CHALLENGE=$TLS_CHALLENGE tenants=*.$BASE_DOMAIN admin=$SUPER_ADMIN_DOMAIN custom=[${CUSTOM_DOMAINS# }]"
+echo "traefik-entrypoint: TLS_CHALLENGE=$TLS_CHALLENGE tenants=*.$BASE_DOMAIN admin=$SUPER_ADMIN_DOMAIN custom=[${CUSTOM_DOMAINS# }] extra=[${EXTRA_ROUTES# }]"
 exec traefik --configFile="$STATIC" "$@"
